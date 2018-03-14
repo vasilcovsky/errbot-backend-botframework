@@ -1,6 +1,6 @@
 # Bot Framework Backend for ErrBot
 
-Backend for [Bot Framework] (https://botframework.com) that brings ErrBot to the channels: 
+Backend for [Bot Framework](https://botframework.com) that brings ErrBot to the channels: 
   * Skype (COM component is not required anymore)
   * Skype for Business
   * Facebook Messenger
@@ -42,7 +42,7 @@ Start bot and activate Webserver plugin (**required**)
 Final steps:
  * Go to [Azure Portal](https://portal.azure.com) 
  * Open settings
- * Specify Messaging Endpoint: https://<errbot url>/botframework
+ * Specify Messaging Endpoint: https://errbot-url/botframework
  * Add channels 
  * Enjoy
  
