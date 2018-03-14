@@ -23,7 +23,7 @@ You would need Azure account (sorry). But don't worry you don't need to pay or b
 
 Download backend:
 ```
-git checkout https://github.com/vasilcovsky/errbot-backend-botframework
+git checkout https://github.com/vasilcovsky/errbot-backend-botframework.git
 ```
 
 In errbot's config.py
