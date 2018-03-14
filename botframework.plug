@@ -1,0 +1,6 @@
+[Core]
+Name = BotFramework
+Module = botframework
+
+[Documentation]
+Description = Backend implementation for Bot Framework (https://www.botframework.com)
