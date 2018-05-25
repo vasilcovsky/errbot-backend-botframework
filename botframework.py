@@ -8,7 +8,7 @@ from urllib.parse import urljoin
 from collections import namedtuple
 
 from bottle import request
-from errbot.errBot import ErrBot
+from errbot.core import ErrBot
 from errbot.core_plugins.wsview import bottle_app
 from errbot.backends.base import Message
 
