@@ -10,7 +10,7 @@ from collections import namedtuple
 from bottle import request
 from errbot.core import ErrBot
 from errbot.core_plugins.wsview import bottle_app
-from errbot.backends.base import Message
+from errbot.backends.base import Message, Person
 
 log = logging.getLogger('errbot.backends.botframework')
 authtoken = namedtuple('AuthToken', 'access_token, expired_at')
@@ -78,14 +78,25 @@ class Conversation:
         return urljoin(self.service_url, url)
 
 
-class Identifier:
-    def __init__(self, subject):
+class Identifier(Person):
+    def __init__(self, obj_or_json):
+        if isinstance(obj_or_json, str):
+            subject = json.loads(obj_or_json)
+        else:
+            subject = obj_or_json
+
         self._subject = subject
         self._id = subject.get('id', '<not found>')
         self._name = subject.get('name', '<not found>')
 
     def __str__(self):
-        return '[' + self._id + '] ' + self._name
+        return json.dumps({
+            'id': self._id,
+            'name': self._name
+        })
+
+    def __eq__(self, other):
+        return str(self) == str(other)
 
     @property
     def subject(self):
@@ -123,9 +134,15 @@ class BotFramework(ErrBot):
         super(BotFramework, self).__init__(config)
 
         identity = config.BOT_IDENTITY
-        self._appId = identity.get('appId', '')
-        self._appPassword = identity.get('appPassword', '')
+        self._appId = identity.get('appId', None)
+        self._appPassword = identity.get('appPassword', None)
         self._token = None
+        self._emulator_mode = self._appId is None or self._appPassword is None
+
+        self.bot_identifier = None
+
+    def _set_bot_identifier(self, identifier):
+        self.bot_identifier = identifier
 
     def _ensure_token(self):
         """Keep OAuth token valid"""
@@ -164,12 +181,13 @@ class BotFramework(ErrBot):
 
         @param response: activity object
         """
-        access_token = self._ensure_token()
-
         headers = {
-            'Authorization': 'Bearer ' + access_token,
             'Content-Type': 'application/json'
         }
+
+        if not self._emulator_mode:
+            access_token = self._ensure_token()
+            headers['Authorization'] = 'Bearer ' + access_token
 
         r = requests.post(
             response.post_url,
@@ -244,6 +262,8 @@ class BotFramework(ErrBot):
                 msg.frm = errbot.build_identifier(req['from'])
                 msg.to = errbot.build_identifier(req['recipient'])
                 msg.extras['conversation'] = errbot.build_conversation(req)
+
+                errbot._set_bot_identifier(msg.to)
 
                 errbot.send_feedback(msg)
                 errbot.callback_message(msg)
