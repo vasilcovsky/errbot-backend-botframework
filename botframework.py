@@ -70,7 +70,7 @@ class Conversation:
 
     @property
     def reply_url(self):
-        url = '/v3/conversations/{}/activities/{}'.format(
+        url = 'v3/conversations/{}/activities/{}'.format(
             self.conversation_id,
             self.activity_id
         )
