@@ -7,9 +7,9 @@ from time import sleep
 from urllib.parse import urljoin
 from collections import namedtuple
 
-from bottle import request
+from flask import request
 from errbot.core import ErrBot
-from errbot.core_plugins.wsview import bottle_app
+from errbot.core_plugins import flask_app
 from errbot.backends.base import Message, Person
 
 log = logging.getLogger('errbot.backends.botframework')
@@ -248,11 +248,11 @@ class BotFramework(ErrBot):
         return 'BotFramework'
 
     def _init_handler(self, errbot):
-        @bottle_app.route('/botframework', method=['GET', 'OPTIONS'])
+        @flask_app.route('/botframework', methods=['GET', 'OPTIONS'])
         def get_botframework():
-            pass
+            return ''
 
-        @bottle_app.route('/botframework', method=['POST'])
+        @flask_app.route('/botframework', methods=['POST'])
         def post_botframework():
             req = request.json
             log.debug('received request: type=[%s] channel=[%s]',
@@ -267,3 +267,4 @@ class BotFramework(ErrBot):
 
                 errbot.send_feedback(msg)
                 errbot.callback_message(msg)
+            return ''
