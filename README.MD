@@ -34,7 +34,7 @@ BOT_EXTRA_BACKEND_DIR = '/path-to/errbot-backend-botframework/'
 
 BOT_IDENTITY = {
     'appId': '<application id>',
-    'appPassword': <app secret>'
+    'appPassword': '<app secret>'
 }
 ``` 
 
