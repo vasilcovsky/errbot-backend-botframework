@@ -11,10 +11,10 @@ from flask import request
 from errbot.core import ErrBot
 from errbot.core_plugins import flask_app
 from errbot.backends.base import Message, Person
+from lib.bf_ids import BFPerson, BFRoom, BFRoomOccupant
 
 log = logging.getLogger('errbot.backends.botframework')
 authtoken = namedtuple('AuthToken', 'access_token, expired_at')
-activity = namedtuple('Activity', 'post_url, payload')
 
 
 def from_now(seconds):
@@ -41,90 +41,68 @@ def auth(appId, appPasswd):
 
     return token
 
-
 class Conversation:
+    def __init__(self, conversation):
+        self._conversation = conversation
+
+    @property
+    def raw(self):
+        return self._conversation
+
+    @property
+    def id(self):
+        return self._conversation['id']
+
+    @property
+    def room_id(self):
+        return self.id.split(';')[0]
+
+    @property
+    def aad_object_id(self):
+        return self._conversation["aadObjectId"]
+
+    @property
+    def tenant_id(self):
+        return self._conversation["tenantId"]
+
+    @property
+    def conversation_type(self):
+        return self._conversation['conversationType']
+
+class Activity:
     """ Wrapper on Activity object.
 
     See more:
         https://docs.microsoft.com/en-us/bot-framework/rest-api/bot-framework-rest-connector-api-reference#activity-object
     """
 
-    def __init__(self, conversation):
-        self._conversation = conversation
+    def __init__(self, activity):
+        self._activity = activity
+        self._conversation = Conversation(self._activity["conversation"])
+
+    @property
+    def raw(self):
+        return self._activity
 
     @property
     def conversation(self):
-        return self._conversation['conversation']
+        return self._conversation
 
     @property
-    def conversation_id(self):
-        return self.conversation['id']
+    def id(self):
+        if 'id' not in self._activity:
+            return None
+        return self._activity['id']
 
     @property
-    def activity_id(self):
-        return self._conversation['id']
+    def reply_to_id(self):
+        if 'replyToId' not in self._activity:
+            return None
+        return self._activity["replyToId"]
 
     @property
     def service_url(self):
-        return self._conversation['serviceUrl']
-
-    @property
-    def reply_url(self):
-        url = 'v3/conversations/{}/activities/{}'.format(
-            self.conversation_id,
-            self.activity_id
-        )
-
-        return urljoin(self.service_url, url)
-
-
-class Identifier(Person):
-    def __init__(self, obj_or_json):
-        if isinstance(obj_or_json, str):
-            subject = json.loads(obj_or_json)
-        else:
-            subject = obj_or_json
-
-        self._subject = subject
-        self._id = subject.get('id', '<not found>')
-        self._name = subject.get('name', '<not found>')
-
-    def __str__(self):
-        return json.dumps({
-            'id': self._id,
-            'name': self._name
-        })
-
-    def __eq__(self, other):
-        return str(self) == str(other)
-
-    @property
-    def subject(self):
-        return self._subject
-
-    @property
-    def userid(self):
-        return self._id
-
-    @property
-    def aclattr(self):
-        return self._id
-
-    @property
-    def person(self):
-        return self._name
-
-    @property
-    def nick(self):
-        return self._name
-
-    @property
-    def fullname(self):
-        return self._name
-
-    @property
-    def client(self):
-        return '<not set>'
+        return self._activity['serviceUrl']
 
 
 class BotFramework(ErrBot):
