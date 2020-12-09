@@ -1,19 +1,22 @@
 import base64
+import copyreg
+import datetime
 import json
 import logging
-import datetime
-import requests
-
-from time import sleep
-from urllib.parse import urljoin
+import re
+import threading
+import time
 from collections import namedtuple
+from time import sleep
 
 import jwt
-from flask import request
+import requests
 from cryptography.x509 import load_der_x509_certificate
+from errbot.backends.base import Message
 from errbot.core import ErrBot
 from errbot.core_plugins import flask_app
-from errbot.backends.base import Message, Person
+from flask import request, abort
+from lib.bf_card import build_bf_card
 from lib.bf_ids import BFPerson, BFRoom, BFRoomOccupant
 
 log = logging.getLogger('errbot.backends.botframework')
