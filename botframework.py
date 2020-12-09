@@ -140,10 +140,17 @@ class BotFramework(ErrBot):
         BotFramework.__build_identifier = self.build_identifier
         for cls in (BFPerson, BFRoomOccupant, BFRoom):
             copyreg.pickle(cls, BotFramework._pickle_identifier, BotFramework._unpickle_identifier)
-        self.bot_identifier = None
 
-    def _set_bot_identifier(self, identifier):
-        self.bot_identifier = identifier
+    def _load_persistent_stuff(self):
+        self.bot_account = self.get("bot_account", None)
+        if self.bot_account is not None:
+            self.bot_identifier = BFPerson.from_bf_account(self.bot_account)
+        else:
+            self.bot_identifier = None
+
+    def _set_bot_account(self, account):
+        self["bot_account"] = account
+        self.bot_identifier = BFPerson.from_bf_account(account)
 
     def _ensure_token(self):
         """Keep OAuth token valid"""
@@ -239,6 +246,7 @@ class BotFramework(ErrBot):
 
     def serve_forever(self):
         self._ensure_keys()
+        self._load_persistent_stuff()
         self._init_handler(self)
         self.connect_callback()
 
@@ -310,7 +318,8 @@ class BotFramework(ErrBot):
                 msg.to = errbot.build_identifier(req['recipient'])
                 msg.extras['conversation'] = errbot.build_conversation(req)
 
-                errbot._set_bot_identifier(msg.to)
+                if errbot.bot_identifier is None:
+                    errbot._set_bot_account(req['recipient'])
 
                 if msg.body.startswith(errbot.bot_config.BOT_PREFIX):
                     errbot.send_feedback(msg)
