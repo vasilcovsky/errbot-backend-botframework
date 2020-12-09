@@ -268,8 +268,36 @@ class BotFramework(ErrBot):
         self._send_reply(response)
         super(BotFramework, self).send_message(msg)
 
-    def build_identifier(self, user):
-        return Identifier(user)
+    def build_identifier(self, id):
+        prefix = id[0]
+        id = id[1:]
+
+        if prefix == "@":
+            if self.bot_identifier is not None and self.bot_identifier.person == id:
+                return self.bot_identifier
+            convs = []
+            conv = self.get_personal_conversation(id)
+            if conv is not None:
+                convs.append(conv)
+            else:
+                convs = self.get_all_channel_conversations()
+            for conv in convs:
+                members = self._get_conversation_members(conv.room_id)
+                for m in members:
+                    if m["id"] == id:
+                        return BFPerson.from_bf_account(m)
+            raise ValueError("unknown id @%s" % id)
+        elif prefix == "#":
+            s = id.split("/")
+            room_id = s[0]
+            conv = self.get_channel_conversation(room_id)
+            room = BFRoom.from_bf_conversation(conv, self)
+            if len(s) == 1:
+                return room
+            else:
+                person = self.build_identifier(s[1])
+                return BFRoomOccupant(person, room)
+        raise ValueError("Unknown id type for %s%s" % (prefix, id))
 
     def build_reply(self, msg, text=None, private=False, threaded=False):
         return Message(
