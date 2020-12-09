@@ -284,9 +284,6 @@ class BotFramework(ErrBot):
         feedback = self._build_feedback(msg)
         self._send_reply(feedback)
 
-    def build_conversation(self, conv):
-        return Conversation(conv)
-
     def change_presence(self, status, message):
         pass
 
@@ -321,11 +318,24 @@ class BotFramework(ErrBot):
                 # we assume that this url won't magically change...
                 self["service_url"] = req["serviceUrl"]
                 self._saved_service_url = True
+
+            activity = Activity(req)
+            conv = activity.conversation
             if req['type'] == 'message':
                 msg = Message(self.strip_mention(req['text']))
-                msg.frm = errbot.build_identifier(req['from'])
-                msg.to = errbot.build_identifier(req['recipient'])
-                msg.extras['conversation'] = errbot.build_conversation(req)
+                msg.extras['conversation'] = conv
+
+                if conv.conversation_type == "channel":
+                    room = BFRoom.from_bf_conversation(conv, self)
+                    msg.frm = BFRoomOccupant(BFPerson.from_bf_account(req["from"]), room)
+                    msg.to = BFRoomOccupant(BFPerson.from_bf_account(req["recipient"]), room)
+                elif conv.conversation_type == "personal":
+                    msg.frm = BFPerson.from_bf_account(req['from'])
+                    msg.to = BFPerson.from_bf_account(req['recipient'])
+                else:
+                    log.warning("Unknown conversation type %s" % conv.conversation_type)
+                    log.warning("req=%s" % request.data)
+                    return
 
                 if errbot.bot_identifier is None:
                     errbot._set_bot_account(req['recipient'])
