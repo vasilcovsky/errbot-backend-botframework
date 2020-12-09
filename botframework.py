@@ -119,6 +119,8 @@ class BotFramework(ErrBot):
         self._appPassword = identity.get('appPassword', None)
         self._token = None
         self._emulator_mode = self._appId is None or self._appPassword is None
+        self._default_service_url = "https://smba.trafficmanager.net/emea/"
+        self._saved_service_url = False
         self._keys_url = "https://login.botframework.com/v1/.well-known/keys"
         self._keys = None
         self._keys_time = None
@@ -142,6 +144,8 @@ class BotFramework(ErrBot):
             copyreg.pickle(cls, BotFramework._pickle_identifier, BotFramework._unpickle_identifier)
 
     def _load_persistent_stuff(self):
+        self._service_url = self.get("service_url", self._default_service_url)
+
         self.bot_account = self.get("bot_account", None)
         if self.bot_account is not None:
             self.bot_identifier = BFPerson.from_bf_account(self.bot_account)
@@ -312,6 +316,11 @@ class BotFramework(ErrBot):
             req = request.json
             log.debug('received request: type=[%s] channel=[%s]',
                       req['type'], req['channelId'])
+
+            if "serviceUrl" in req and not self._saved_service_url:
+                # we assume that this url won't magically change...
+                self["service_url"] = req["serviceUrl"]
+                self._saved_service_url = True
             if req['type'] == 'message':
                 msg = Message(self.strip_mention(req['text']))
                 msg.frm = errbot.build_identifier(req['from'])
