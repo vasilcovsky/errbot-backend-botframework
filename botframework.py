@@ -318,8 +318,8 @@ class BotFramework(ErrBot):
         return Message(
             body=text,
             parent=msg,
-            frm=msg.frm,
-            to=msg.to,
+            frm=msg.to,
+            to=msg.frm,
             extras=msg.extras,
         )
 
