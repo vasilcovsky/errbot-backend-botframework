@@ -117,6 +117,23 @@ class BotFramework(ErrBot):
         self._token = None
         self._emulator_mode = self._appId is None or self._appPassword is None
 
+        self._register_identifiers_pickling()
+
+    @staticmethod
+    def _unpickle_identifier(identifier_str):
+        return BotFramework.__build_identifier(identifier_str)
+
+    @staticmethod
+    def _pickle_identifier(identifier):
+        return BotFramework._unpickle_identifier, (str(identifier),)
+
+    def _register_identifiers_pickling(self):
+        """
+        Taken from SlackBackend._register_identifiers_pickling
+        """
+        BotFramework.__build_identifier = self.build_identifier
+        for cls in (BFPerson, BFRoomOccupant, BFRoom):
+            copyreg.pickle(cls, BotFramework._pickle_identifier, BotFramework._unpickle_identifier)
         self.bot_identifier = None
 
     def _set_bot_identifier(self, identifier):
