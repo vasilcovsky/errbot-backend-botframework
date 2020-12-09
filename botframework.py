@@ -313,7 +313,7 @@ class BotFramework(ErrBot):
             log.debug('received request: type=[%s] channel=[%s]',
                       req['type'], req['channelId'])
             if req['type'] == 'message':
-                msg = Message(req['text'])
+                msg = Message(self.strip_mention(req['text']))
                 msg.frm = errbot.build_identifier(req['from'])
                 msg.to = errbot.build_identifier(req['recipient'])
                 msg.extras['conversation'] = errbot.build_conversation(req)
@@ -325,3 +325,6 @@ class BotFramework(ErrBot):
                     errbot.send_feedback(msg)
                 errbot.callback_message(msg)
             return ''
+
+    def strip_mention(self, text):
+        return re.sub(r'^<at>([^<]*)<\/at>', '', text.lstrip()).lstrip()
