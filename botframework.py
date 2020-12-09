@@ -124,6 +124,8 @@ class BotFramework(ErrBot):
         self._keys_url = "https://login.botframework.com/v1/.well-known/keys"
         self._keys = None
         self._keys_time = None
+        self._conversation_members_cache = {}
+        self._cache_lock = threading.Lock()
 
         self._register_identifiers_pickling()
 
@@ -248,6 +250,19 @@ class BotFramework(ErrBot):
 
         r.raise_for_status()
 
+    def _get_conversation_members(self, conversation_id):
+        with self._cache_lock:
+            if conversation_id in self._conversation_members_cache:
+                if time.time() - self._conversation_members_cache[conversation_id]["entryTime"] < 60:
+                    return self._conversation_members_cache[conversation_id]["result"]
+        r = self._get("%s/members" % self._build_conversation_url(conversation_id))
+        with self._cache_lock:
+            self._conversation_members_cache[conversation_id] = {
+                "entryTime": time.time(),
+                "result": r
+            }
+        return r
+
     def serve_forever(self):
         self._ensure_keys()
         self._load_persistent_stuff()
@@ -349,6 +364,12 @@ class BotFramework(ErrBot):
 
             activity = Activity(req)
             conv = activity.conversation
+
+            if req['type'] == "conversationUpdate":
+                if "membersAdded" in req or "membersRemoved" in req:
+                    with self._cache_lock:
+                        if conv.room_id is self._conversation_members_cache:
+                            del self._conversation_members_cache[conv.room_id]
             if req['type'] == 'message':
                 msg = Message(self.strip_mention(req['text']))
                 msg.extras['conversation'] = conv
