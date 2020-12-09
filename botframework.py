@@ -261,6 +261,11 @@ class BotFramework(ErrBot):
     def _build_message(self, msg):
         return self._build_activity(msg.to, msg.frm, "message", msg.body, self._build_conversation_for_id(msg.to, msg.parent), msg.parent)
 
+    def _build_card(self, card):
+        activity = self._build_activity(card.to, card.frm, "message", None, self._build_conversation_for_id(card.to, card.parent), card.parent)
+        activity.raw["attachments"] = [build_bf_card(card)]
+        return activity
+
     def _build_feedback(self, msg):
         return self._build_activity(None, self.bot_identifier, 'typing', None, msg.extras["conversation"], msg)
 
@@ -356,6 +361,13 @@ class BotFramework(ErrBot):
         r = self._send_activity(activity)
         msg.extras["message_id"] = r["id"]
         return super(BotFramework, self).send_message(msg)
+
+    def send_card(self, card):
+        activity = self._build_card(card)
+        r = self._send_activity(activity)
+        msg = Message(card.body, card.frm, card.to, card.parent)
+        msg.extras["message_id"] = r["id"]
+        return msg
 
     def build_identifier(self, id):
         prefix = id[0]
