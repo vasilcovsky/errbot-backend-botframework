@@ -340,6 +340,35 @@ class BotFramework(ErrBot):
     def mode(self):
         return 'BotFramework'
 
+    def set_personal_conversation(self, id, conv):
+        self["personal_conversations_%s" % id] = conv.raw
+
+    def get_personal_conversation(self, id):
+        c = self.get("personal_conversations_%s" % id, None)
+        if c is None:
+            return None
+        return Conversation(c)
+
+    def set_channel_conversation(self, conv):
+        raw = {
+            **conv.raw,
+            "id": conv.room_id,
+        }
+        self["channel_conversations_%s" % conv.room_id] = raw
+
+    def get_channel_conversation(self, room_id):
+        c = self.get("channel_conversations_%s" % room_id, None)
+        if c is None:
+            return None
+        return Conversation(c)
+
+    def get_all_channel_conversations(self):
+        r = []
+        for k in self.keys():
+            if k.startswith("channel_conversations_"):
+                r.append(Conversation(self.get(k)))
+        return r
+
     def _init_handler(self, errbot):
         @flask_app.route('/botframework', methods=['GET', 'OPTIONS'])
         def get_botframework():
@@ -364,6 +393,14 @@ class BotFramework(ErrBot):
 
             activity = Activity(req)
             conv = activity.conversation
+
+            # We need to store conversations for channels and personal conversatons as there is no way to figure
+            # out in which conversations the bot participates. We need this information in case the bot wants to
+            # directly send something into a conversation where only the channel or personal id is known
+            if conv.conversation_type == "channel":
+                self.set_channel_conversation(conv)
+            elif conv.conversation_type == "personal":
+                self.set_personal_conversation(req["from"]["id"], conv)
 
             if req['type'] == "conversationUpdate":
                 if "membersAdded" in req or "membersRemoved" in req:
