@@ -204,36 +204,93 @@ class BotFramework(ErrBot):
         except Exception as e:
             return False
 
-    def _build_reply(self, msg):
-        conversation = msg.extras['conversation']
+    def _build_activity(self, to, frm, message_type, body, conversation, parent_msg):
         payload = {
-            'type': 'message',
-            'conversation': conversation.conversation,
-            'from': msg.to.subject,
-            'recipient': msg.frm.subject,
-            'replyToId': conversation.conversation_id,
-            'text': msg.body
+            'type': message_type,
+            'conversation': conversation.raw,
+            'service_url': self._service_url,
         }
-        return activity(conversation.reply_url, payload)
+
+        if to is not None:
+            if isinstance(to, BFPerson) or isinstance(to, BFRoomOccupant):
+                payload['recipient'] = to.to_bf_subject()
+            elif to is BFRoom:
+                pass
+
+        if frm is not None:
+            payload['from'] = frm.to_bf_subject()
+        if body is not None:
+            payload['text'] = body.lstrip()
+            payload['textFormat'] = 'markdown'
+
+        if parent_msg is not None:
+            payload["replyToId"] = conversation.id
+
+        return Activity(payload)
+
+    def _build_conversation_for_id(self, id, parent_msg):
+        if id is None:
+            raise ValueError("id is None")
+        if isinstance(id, BFRoomOccupant):
+            return self._build_conversation_for_id(id.room, parent_msg)
+        elif isinstance(id, BFRoom):
+            if parent_msg and "message_id" in parent_msg.extras:
+                id2 = "%s;messageid=%s" % (id.room_id, parent_msg.extras["message_id"])
+            elif parent_msg:
+                id2 = parent_msg.extras["conversation"].id
+            else:
+                id2 = id.room_id
+
+            return Conversation({
+                "conversationType": "channel",
+                "id": id2,
+                "isGroup": True,
+                "tenantId": id.tenant_id,
+            })
+        elif isinstance(id, BFPerson):
+            c = self.get_personal_conversation(id.person)
+            if c is None:
+                raise ValueError("no conversation for %s found" % str(id))
+            return c
+        else:
+            raise ValueError("Unknown id type %s" % type(id).__name__)
+
+    def _build_message(self, msg):
+        return self._build_activity(msg.to, msg.frm, "message", msg.body, self._build_conversation_for_id(msg.to, msg.parent), msg.parent)
 
     def _build_feedback(self, msg):
-        conversation = msg.extras['conversation']
-        payload = {
-            'type': 'typing',
-            'conversation': conversation.conversation,
-            'from': msg.to.subject,
-            'replyToId': conversation.conversation_id,
+        return self._build_activity(None, self.bot_identifier, 'typing', None, msg.extras["conversation"], msg)
+
+    def _build_conversation_url(self, conversation_id):
+        url = "%sv3/conversations" % self._service_url
+        if conversation_id is not None:
+            url += "/%s" % conversation_id
+        return url
+
+    def _build_activity_url(self, activity):
+        url = self._build_conversation_url(activity.conversation.id)
+        url += "/activities"
+        if activity.reply_to_id is not None:
+            url += "/{}".format(activity.reply_to_id)
+        return url
+
+    def _get(self, url):
+        headers = {
         }
-        return activity(conversation.reply_url, payload)
 
-    def _send_reply(self, response):
-        """Post response to callback url
+        if not self._emulator_mode:
+            access_token = self._ensure_token()
+            headers['Authorization'] = 'Bearer ' + access_token
 
-        Send a reply to URL indicated in serviceUrl from
-        Bot Framework's request object.
+        r = requests.get(
+            url,
+            headers=headers
+        )
 
-        @param response: activity object
-        """
+        r.raise_for_status()
+        return r.json()
+
+    def _post(self, url, data):
         headers = {
             'Content-Type': 'application/json'
         }
@@ -243,12 +300,25 @@ class BotFramework(ErrBot):
             headers['Authorization'] = 'Bearer ' + access_token
 
         r = requests.post(
-            response.post_url,
-            data=json.dumps(response.payload),
+            url,
+            data=data,
             headers=headers
         )
 
         r.raise_for_status()
+        if r.text is None or r.text == "":
+            return None
+        return r.json()
+
+    def _send_activity(self, activity):
+        """Post response to callback url
+
+        Send a reply to URL indicated in serviceUrl from
+        Bot Framework's request object.
+
+        @param activity: activity object
+        """
+        return self._post(self._build_activity_url(activity), json.dumps(activity.raw))
 
     def _get_conversation_members(self, conversation_id):
         with self._cache_lock:
@@ -279,9 +349,10 @@ class BotFramework(ErrBot):
             self.shutdown()
 
     def send_message(self, msg):
-        response = self._build_reply(msg)
-        self._send_reply(response)
-        super(BotFramework, self).send_message(msg)
+        activity = self._build_message(msg)
+        r = self._send_activity(activity)
+        msg.extras["message_id"] = r["id"]
+        return super(BotFramework, self).send_message(msg)
 
     def build_identifier(self, id):
         prefix = id[0]
@@ -325,7 +396,7 @@ class BotFramework(ErrBot):
 
     def send_feedback(self, msg):
         feedback = self._build_feedback(msg)
-        self._send_reply(feedback)
+        self._send_activity(feedback)
 
     def change_presence(self, status, message):
         pass
