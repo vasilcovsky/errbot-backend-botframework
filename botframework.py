@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import datetime
@@ -7,7 +8,9 @@ from time import sleep
 from urllib.parse import urljoin
 from collections import namedtuple
 
+import jwt
 from flask import request
+from cryptography.x509 import load_der_x509_certificate
 from errbot.core import ErrBot
 from errbot.core_plugins import flask_app
 from errbot.backends.base import Message, Person
@@ -116,6 +119,9 @@ class BotFramework(ErrBot):
         self._appPassword = identity.get('appPassword', None)
         self._token = None
         self._emulator_mode = self._appId is None or self._appPassword is None
+        self._keys_url = "https://login.botframework.com/v1/.well-known/keys"
+        self._keys = None
+        self._keys_time = None
 
         self._register_identifiers_pickling()
 
@@ -145,6 +151,45 @@ class BotFramework(ErrBot):
         if not self._token or self._token.expired_at <= now:
             self._token = auth(self._appId, self._appPassword)
         return self._token.access_token
+
+    def _ensure_keys(self):
+        with self._cache_lock:
+            if self._keys is not None and time.time() - self._keys_time < 60 * 60:
+                return
+            keys = requests.get(self._keys_url).json()
+            self._keys = {}
+            for k in keys["keys"]:
+                if "x5c" in k and "x5t" in k:
+                    b = base64.b64decode(k["x5c"][0])
+                    x5c = load_der_x509_certificate(b)
+                    self._keys[k["x5t"]] = x5c
+            self._keys_time = time.time()
+
+    def _get_key(self, x5t):
+        self._ensure_keys()
+        with self._cache_lock:
+            return self._keys.get(x5t, None)
+
+    def _validate_jwt_token(self, auth_header):
+        try:
+            if not auth_header.startswith("Bearer "):
+                return False
+            token = auth_header[len("Bearer "):]
+            header = jwt.get_unverified_header(token)
+            if header["alg"] != "RS256" or header["typ"] != "JWT":
+                return False
+            k = self._get_key(header["x5t"])
+            if k is None:
+                return False
+            k = k.public_key()
+            token = jwt.decode(token,
+                               key=k,
+                               audience=self.bot_config.BOT_IDENTITY["appId"],
+                               issuer="https://api.botframework.com",
+                               algorithms=["RS256"])
+            return True
+        except Exception as e:
+            return False
 
     def _build_reply(self, msg):
         conversation = msg.extras['conversation']
@@ -193,6 +238,7 @@ class BotFramework(ErrBot):
         r.raise_for_status()
 
     def serve_forever(self):
+        self._ensure_keys()
         self._init_handler(self)
         self.connect_callback()
 
@@ -249,6 +295,12 @@ class BotFramework(ErrBot):
 
         @flask_app.route('/botframework', methods=['POST'])
         def post_botframework():
+            if "Authorization" not in request.headers:
+                abort(403, "Forbidden")
+            auth_header = request.headers["Authorization"]
+            if not self._validate_jwt_token(auth_header):
+                abort(403, "Forbidden")
+
             req = request.json
             log.debug('received request: type=[%s] channel=[%s]',
                       req['type'], req['channelId'])
