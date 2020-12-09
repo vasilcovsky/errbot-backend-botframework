@@ -312,6 +312,7 @@ class BotFramework(ErrBot):
 
                 errbot._set_bot_identifier(msg.to)
 
-                errbot.send_feedback(msg)
+                if msg.body.startswith(errbot.bot_config.BOT_PREFIX):
+                    errbot.send_feedback(msg)
                 errbot.callback_message(msg)
             return ''
