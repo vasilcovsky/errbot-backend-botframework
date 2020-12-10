@@ -65,6 +65,15 @@ class Conversation:
         return self.id.split(';')[0]
 
     @property
+    def message_id(self):
+        s = self.id.split(';')
+        if len(s) == 1:
+            return None
+        if not s[1].startswith("messageid="):
+            return None
+        return s[1][len("messageid="):]
+
+    @property
     def aad_object_id(self):
         return self._conversation["aadObjectId"]
 
@@ -247,11 +256,15 @@ class BotFramework(ErrBot):
         if isinstance(id, BFRoomOccupant):
             return self._build_conversation_for_id(id.room, parent_msg)
         elif isinstance(id, BFRoom):
-            if parent_msg and "message_id" in parent_msg.extras:
-                id2 = "%s;messageid=%s" % (id.room_id, parent_msg.extras["message_id"])
-            elif parent_msg:
-                id2 = parent_msg.extras["conversation"].id
-            else:
+            id2 = None
+            if parent_msg:
+                if "conversation" in parent_msg.extras and parent_msg.extras["conversation"].message_id is not None:
+                    id2 = parent_msg.extras["conversation"].id
+                elif "message_id" in parent_msg.extras:
+                    id2 = "%s;messageid=%s" % (id.room_id, parent_msg.extras["message_id"])
+                elif "conversation" in parent_msg.extras:
+                    id2 = parent_msg.extras["conversation"].id
+            if id2 is None:
                 id2 = id.room_id
 
             return Conversation({
