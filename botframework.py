@@ -9,6 +9,7 @@ import time
 from collections import namedtuple
 from time import sleep
 
+import jsonpickle
 import jwt
 import requests
 from cryptography.x509 import load_der_x509_certificate
@@ -141,12 +142,21 @@ class BotFramework(ErrBot):
         return BotFramework._unpickle_identifier, (str(identifier),)
 
     def _register_identifiers_pickling(self):
+        class JsonPickleHandler(jsonpickle.handlers.BaseHandler):
+            def __init__(self, bot):
+                self.bot = bot
+            def flatten(self, obj, data):
+                data["str"] = str(obj)
+            def restore(self, obj):
+                return self.bot.build_identifier(obj["str"])
+
         """
         Taken from SlackBackend._register_identifiers_pickling
         """
         BotFramework.__build_identifier = self.build_identifier
         for cls in (BFPerson, BFRoomOccupant, BFRoom):
             copyreg.pickle(cls, BotFramework._pickle_identifier, BotFramework._unpickle_identifier)
+            jsonpickle.handlers.register(cls, JsonPickleHandler(self))
 
     def _load_persistent_stuff(self):
         self._service_url = self.get("service_url", self._default_service_url)
