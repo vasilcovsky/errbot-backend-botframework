@@ -156,6 +156,7 @@ class BotFramework(ErrBot):
                 self.bot = bot
             def flatten(self, obj, data):
                 data["str"] = str(obj)
+                return data
             def restore(self, obj):
                 return self.bot.build_identifier(obj["str"])
 

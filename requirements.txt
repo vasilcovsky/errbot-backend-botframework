@@ -1,1 +1,2 @@
 pyjwt==1.7.1
+jsonpickle
