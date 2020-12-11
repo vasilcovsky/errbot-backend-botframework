@@ -40,8 +40,10 @@ def auth(appId, appPasswd):
     r = requests.post(
         'https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token',
         data=form
-    ).json()
+    )
+    r.raise_for_status()
 
+    r = r.json()
     expires_in = r['expires_in']
     expired_at = from_now(expires_in)
     token = authtoken(r['access_token'], expired_at)
