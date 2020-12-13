@@ -4,14 +4,25 @@ from errbot.backends.base import Person, Room, RoomOccupant
 
 
 class BFPerson(Person):
-    def __init__(self, id, name, aad_object_id):
+    def __init__(self, id, name, given_name, surname, email, upn, aad_object_id):
         self._id = id
         self._name = name
+        self._given_name = given_name
+        self._surname = surname
+        self._email = email
+        self._upn = upn
         self._aad_object_id = aad_object_id
 
     @staticmethod
     def from_bf_account(account):
-        return BFPerson(account["id"], account["name"], account.get("aadObjectId", None))
+        return BFPerson(account["id"],
+                        account["name"],
+                        account.get("givenName", None),
+                        account.get("surname", None),
+                        account.get("email", None),
+                        account.get("userPrincipalName", None),
+                        account.get("aadObjectId", None)
+                        )
 
     def to_bf_subject(self):
         r = {
@@ -23,7 +34,7 @@ class BFPerson(Person):
         return r
 
     def __str__(self):
-        return "@%s" % self._id
+        return self.aclattr
 
     def __hash__(self):
         return hash(str(self))
@@ -39,19 +50,29 @@ class BFPerson(Person):
 
     @property
     def aclattr(self):
-        return "@%s" % self._id
+        if self._upn:
+            return self._upn
+        else:
+            return self._id
 
     @property
     def person(self):
-        return self._id
+        return self.aclattr
 
     @property
     def nick(self):
-        return self._name
+        if self._upn:
+            return self._upn
+        else:
+            return self._name
 
     @property
     def fullname(self):
         return self._name
+
+    @property
+    def email(self):
+        return self._email
 
     @property
     def client(self):
@@ -102,7 +123,7 @@ class BFRoom(Room):
 
 class BFRoomOccupant(RoomOccupant, BFPerson):
     def __init__(self, person, room):
-        super().__init__(person.person, person.nick, person.aad_object_id)
+        super().__init__(person._id, person._name, person._given_name, person._surname, person._email, person._upn, person._aad_object_id)
         self._room = room
 
     @property

@@ -365,6 +365,8 @@ class BotFramework(ErrBot):
                 "entryTime": time.time(),
                 "result": r
             }
+            for m in r:
+                self.store_account(m)
         return r
 
     def serve_forever(self):
@@ -396,25 +398,8 @@ class BotFramework(ErrBot):
         return msg
 
     def build_identifier(self, id):
-        prefix = id[0]
-        id = id[1:]
-
-        if prefix == "@":
-            if self.bot_identifier is not None and self.bot_identifier.person == id:
-                return self.bot_identifier
-            convs = []
-            conv = self.get_personal_conversation(id)
-            if conv is not None:
-                convs.append(conv)
-            else:
-                convs = self.get_all_channel_conversations()
-            for conv in convs:
-                members = self._get_conversation_members(conv.room_id)
-                for m in members:
-                    if m["id"] == id:
-                        return BFPerson.from_bf_account(m)
-            raise ValueError("unknown id @%s" % id)
-        elif prefix == "#":
+        if id[0] == "#":
+            id = id[1:]
             s = id.split("/")
             room_id = s[0]
             conv = self.get_channel_conversation(room_id)
@@ -424,7 +409,14 @@ class BotFramework(ErrBot):
             else:
                 person = self.build_identifier(s[1])
                 return BFRoomOccupant(person, room)
-        raise ValueError("Unknown id type for %s%s" % (prefix, id))
+        else:
+            if self.bot_identifier is not None and self.bot_identifier.person == id:
+                return self.bot_identifier
+
+            account = self.get_account(id)
+            if account is None:
+                raise ValueError("unknown id %s" % id)
+            return BFPerson.from_bf_account(account)
 
     def build_reply(self, msg, text=None, private=False, threaded=False):
         return Message(
@@ -481,6 +473,20 @@ class BotFramework(ErrBot):
                 r.append(Conversation(self.get(k)))
         return r
 
+    def store_account(self, account):
+        if "userPrincipalName" in account:
+            key = "account$%s" % account["userPrincipalName"]
+        else:
+            key = "account$%s" % account["id"]
+        self[key] = account
+
+    def get_account(self, upn):
+        key = "account$%s" % upn
+        try:
+            return self[key]
+        except:
+            return None
+
     def _init_handler(self, errbot):
         @flask_app.route('/botframework', methods=['GET', 'OPTIONS'])
         def get_botframework():
@@ -506,13 +512,28 @@ class BotFramework(ErrBot):
             activity = Activity(req)
             conv = activity.conversation
 
+            conv_members = self._get_conversation_members(conv.id)
+            frm = None
+            to = None
+            for m in conv_members:
+                if m["id"] == req["from"]["id"]:
+                    frm = BFPerson.from_bf_account(m)
+                if m["id"] == req["recipient"]["id"]:
+                    to = BFPerson.from_bf_account(m)
+
+            if to is None:
+                # this must be us!
+                to = BFPerson.from_bf_account(req['recipient'])
+                if errbot.bot_identifier is None:
+                    errbot._set_bot_account(req['recipient'])
+
             # We need to store conversations for channels and personal conversatons as there is no way to figure
             # out in which conversations the bot participates. We need this information in case the bot wants to
             # directly send something into a conversation where only the channel or personal id is known
             if conv.conversation_type == "channel":
                 self.set_channel_conversation(conv)
             elif conv.conversation_type == "personal":
-                self.set_personal_conversation(req["from"]["id"], conv)
+                self.set_personal_conversation(frm.person, conv)
 
             if req['type'] == "conversationUpdate":
                 if "membersAdded" in req or "membersRemoved" in req:
@@ -520,23 +541,22 @@ class BotFramework(ErrBot):
                         if conv.room_id is self._conversation_members_cache:
                             del self._conversation_members_cache[conv.room_id]
             if req['type'] == 'message':
-                msg = Message(self.strip_mention(req['text']))
+                msg = Message(self.strip_mention(req['text']), frm=frm, to=to)
                 msg.extras['conversation'] = conv
+
+                if msg.frm is None or msg.to is None:
+                    abort(400, "Could not find from/to members")
 
                 if conv.conversation_type == "channel":
                     room = BFRoom.from_bf_conversation(conv, self)
-                    msg.frm = BFRoomOccupant(BFPerson.from_bf_account(req["from"]), room)
-                    msg.to = BFRoomOccupant(BFPerson.from_bf_account(req["recipient"]), room)
+                    msg.frm = BFRoomOccupant(msg.frm, room)
+                    msg.to = BFRoomOccupant(msg.to, room)
                 elif conv.conversation_type == "personal":
-                    msg.frm = BFPerson.from_bf_account(req['from'])
-                    msg.to = BFPerson.from_bf_account(req['recipient'])
+                   pass
                 else:
                     log.warning("Unknown conversation type %s" % conv.conversation_type)
                     log.warning("req=%s" % request.data)
                     return
-
-                if errbot.bot_identifier is None:
-                    errbot._set_bot_account(req['recipient'])
 
                 if msg.body.startswith(errbot.bot_config.BOT_PREFIX):
                     errbot.send_feedback(msg)
