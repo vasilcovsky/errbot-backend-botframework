@@ -1,7 +1,10 @@
+import re
 import json
 import logging
 import datetime
 import requests
+
+# from botbuilder.core.teams.teams_info import TeamsInfo
 
 from time import sleep
 from urllib.parse import urljoin
@@ -88,11 +91,13 @@ class Identifier(Person):
         self._subject = subject
         self._id = subject.get('id', '<not found>')
         self._name = subject.get('name', '<not found>')
+        self._email = subject.get('email', '<not found>')
 
     def __str__(self):
         return json.dumps({
             'id': self._id,
-            'name': self._name
+            'name': self._name,
+            'email': self._email
         })
 
     def __eq__(self, other):
@@ -121,6 +126,10 @@ class Identifier(Person):
     @property
     def fullname(self):
         return self._name
+    
+    @property
+    def email(self):
+        return self._email
 
     @property
     def client(self):
@@ -246,6 +255,25 @@ class BotFramework(ErrBot):
     @property
     def mode(self):
         return 'BotFramework'
+    
+    def __get_default_headers(self):
+        headers = {
+            'Content-Type': 'application/json'
+        }
+
+        if not self._emulator_mode:
+            access_token = self._ensure_token()
+            headers['Authorization'] = 'Bearer ' + access_token
+        
+        return headers
+    
+    def get_member_details(self, member_id, conversation_id, service_url):
+        response = requests.get(
+            f'{service_url}/v3/conversations/{conversation_id}/members/{member_id}',
+            headers=self.__get_default_headers()
+        )
+
+        return response.json()
 
     def _init_handler(self, errbot):
         @flask_app.route('/botframework', methods=['GET', 'OPTIONS'])
@@ -258,8 +286,19 @@ class BotFramework(ErrBot):
             log.debug('received request: type=[%s] channel=[%s]',
                       req['type'], req['channelId'])
             if req['type'] == 'message':
-                msg = Message(req['text'])
-                msg.frm = errbot.build_identifier(req['from'])
+                conversation_id = req['conversation']['id']
+                service_url = req["serviceUrl"]
+
+                from_member_details = self.get_member_details(
+                    req['from']['id'],
+                    conversation_id,
+                    service_url
+                )
+
+                msg_str = re.sub(r'<at>.+</at>', '', req['text']).strip()
+                msg_str = re.sub(r'\s+', ' ', msg_str)
+                msg = Message(msg_str)
+                msg.frm = errbot.build_identifier(from_member_details)
                 msg.to = errbot.build_identifier(req['recipient'])
                 msg.extras['conversation'] = errbot.build_conversation(req)
 
