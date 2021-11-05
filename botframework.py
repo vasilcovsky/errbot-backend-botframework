@@ -3,6 +3,7 @@ import json
 import logging
 import datetime
 import requests
+import unicodedata
 
 # from botbuilder.core.teams.teams_info import TeamsInfo
 
@@ -52,12 +53,16 @@ class Conversation:
         https://docs.microsoft.com/en-us/bot-framework/rest-api/bot-framework-rest-connector-api-reference#activity-object
     """
 
-    def __init__(self, conversation):
-        self._conversation = conversation
+    def __init__(self, request):
+        self._request = request
+
+    @property
+    def data(self):
+        return self._request
 
     @property
     def conversation(self):
-        return self._conversation['conversation']
+        return self._request['conversation']
 
     @property
     def conversation_id(self):
@@ -65,11 +70,11 @@ class Conversation:
 
     @property
     def activity_id(self):
-        return self._conversation['id']
+        return self._request['id']
 
     @property
     def service_url(self):
-        return self._conversation['serviceUrl']
+        return self._request['serviceUrl']
 
     @property
     def reply_url(self):
@@ -113,7 +118,7 @@ class Identifier(Person):
 
     @property
     def aclattr(self):
-        return self._id
+        return self._email
 
     @property
     def person(self):
@@ -147,6 +152,8 @@ class BotFramework(ErrBot):
         self._appPassword = identity.get('appPassword', None)
         self._token = None
         self._emulator_mode = self._appId is None or self._appPassword is None
+        self._service_url = None
+        self._tenant_id = None
 
         self.bot_identifier = None
 
@@ -161,16 +168,17 @@ class BotFramework(ErrBot):
         return self._token.access_token
 
     def _build_reply(self, msg):
-        conversation = msg.extras['conversation']
+        req = msg.extras['conversation']
         payload = {
             'type': 'message',
-            'conversation': conversation.conversation,
+            'conversation': req.conversation,
             'from': msg.to.subject,
             'recipient': msg.frm.subject,
-            'replyToId': conversation.conversation_id,
-            'text': msg.body
+            'replyToId': req.conversation_id,
+            'text': msg.body,
+            'textFormat': 'markdown'
         }
-        return activity(conversation.reply_url, payload)
+        return activity(req.reply_url, payload)
 
     def _build_feedback(self, msg):
         conversation = msg.extras['conversation']
@@ -190,18 +198,10 @@ class BotFramework(ErrBot):
 
         @param response: activity object
         """
-        headers = {
-            'Content-Type': 'application/json'
-        }
-
-        if not self._emulator_mode:
-            access_token = self._ensure_token()
-            headers['Authorization'] = 'Bearer ' + access_token
-
         r = requests.post(
             response.post_url,
             data=json.dumps(response.payload),
-            headers=headers
+            headers=self.__get_default_headers()
         )
 
         r.raise_for_status()
@@ -218,6 +218,14 @@ class BotFramework(ErrBot):
         finally:
             self.disconnect_callback()
             self.shutdown()
+
+    def send(self, identifier, text, in_reply_to = None, groupchat_nick_reply = False):
+        '''
+        This method is used to send direct messages.
+        '''
+        member = self.get_member_by_email(identifier.email)
+        conversation = self.create_conversation(member['id'])
+        self.send_direct_message(conversation['id'], text)
 
     def send_message(self, msg):
         response = self._build_reply(msg)
@@ -240,6 +248,10 @@ class BotFramework(ErrBot):
         feedback = self._build_feedback(msg)
         self._send_reply(feedback)
 
+    def add_reaction(self, message, reaction):
+        message.body = f'> **@{message.frm.nick}**: {message.body}\n\n👍'
+        self.send_message(message)
+
     def build_conversation(self, conv):
         return Conversation(conv)
 
@@ -260,16 +272,55 @@ class BotFramework(ErrBot):
         headers = {
             'Content-Type': 'application/json'
         }
-
         if not self._emulator_mode:
             access_token = self._ensure_token()
             headers['Authorization'] = 'Bearer ' + access_token
-        
         return headers
-    
-    def get_member_details(self, member_id, conversation_id, service_url):
+
+    def get_member(self, member_id):
         response = requests.get(
-            f'{service_url}/v3/conversations/{conversation_id}/members/{member_id}',
+            f'{self._service_url}/v3/conversations/{self._team_id}/members/{member_id}',
+            headers=self.__get_default_headers()
+        )
+
+        return response.json()
+
+    def get_member_by_email(self, email):
+        response = requests.get(
+            f'{self._service_url}/v3/conversations/{self._team_id}/members/{email}',
+            headers=self.__get_default_headers()
+        )
+
+        return response.json()
+
+    def create_conversation(self, member_id):
+        body = {
+            "bot": {
+                "id": f"28:{self._appId}"
+            },
+            "members": [
+                {
+                    "id": member_id
+                }
+            ],
+            "channelData": {
+                "tenant": {
+                    "id": self._tenant_id
+                }
+            }
+        }
+        response = requests.post(f'{self._service_url}/v3/conversations', json.dumps(body), headers=self.__get_default_headers())
+
+        return response.json()
+    
+    def send_direct_message(self, conversation_id, text):
+        body = {
+            "type": "message",
+            "text": text
+        }
+        response = requests.post(
+            f'{self._service_url}/v3/conversations/{conversation_id}/activities/',
+            json.dumps(body),
             headers=self.__get_default_headers()
         )
 
@@ -283,22 +334,22 @@ class BotFramework(ErrBot):
         @flask_app.route('/botframework', methods=['POST'])
         def post_botframework():
             req = request.json
+
+            req['text'] = unicodedata.normalize("NFKD", req['text']).encode('ascii', 'ignore').decode('UTF-8')
+
             log.debug('received request: type=[%s] channel=[%s]',
                       req['type'], req['channelId'])
             if req['type'] == 'message':
-                conversation_id = req['conversation']['id']
-                service_url = req["serviceUrl"]
+                self._service_url = req['serviceUrl']
+                self._tenant_id = req['channelData']['tenant']['id']
 
-                from_member_details = self.get_member_details(
-                    req['from']['id'],
-                    conversation_id,
-                    service_url
-                )
+                if req['channelData'].get('team'):
+                    self._team_id = req['channelData']['team']['id']
+                    member = self.get_member(req['from']['id'])
+                    req['from'] = member
 
-                msg_str = re.sub(r'<at>.+</at>', '', req['text']).strip()
-                msg_str = re.sub(r'\s+', ' ', msg_str)
-                msg = Message(msg_str)
-                msg.frm = errbot.build_identifier(from_member_details)
+                msg = Message(req['text'])
+                msg.frm = errbot.build_identifier(req['from'])
                 msg.to = errbot.build_identifier(req['recipient'])
                 msg.extras['conversation'] = errbot.build_conversation(req)
 
