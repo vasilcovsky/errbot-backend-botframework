@@ -277,7 +277,9 @@ class BotFramework(ErrBot):
             headers['Authorization'] = 'Bearer ' + access_token
         return headers
 
-    def get_member(self, member_id):
+    def get_member(self, member_id, conversation_id = None):
+        if conversation_id:
+            conversation_id = self._team_id
         response = requests.get(
             f'{self._service_url}/v3/conversations/{self._team_id}/members/{member_id}',
             headers=self.__get_default_headers()
@@ -346,7 +348,10 @@ class BotFramework(ErrBot):
                 if req['channelData'].get('team'):
                     self._team_id = req['channelData']['team']['id']
                     member = self.get_member(req['from']['id'])
-                    req['from'] = member
+                else:
+                    member = self.get_member(req['from']['id'], req['conversation']['id'])
+
+                req['from'] = member
 
                 msg = Message(req['text'])
                 msg.frm = errbot.build_identifier(req['from'])
