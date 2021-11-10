@@ -12,6 +12,6 @@ class DummyConfig:
 
 def mock_config():
     return DummyConfig({
-        'appId': os.environ.get('AZURE_APP_ID'),
-        'appPassword': os.environ.get('AZURE_APP_PASSWORD'),
+        'appId': 'AZURE_APP_ID',
+        'appPassword': 'AZURE_APP_PASSWORD',
     })

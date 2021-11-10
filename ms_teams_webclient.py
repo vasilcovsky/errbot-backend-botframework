@@ -12,7 +12,6 @@ reactions = {
     'thumbsup': '👍'
 }
 
-
 class MSTeamsWebclient:
     def __init__(self, app_id, app_password, emulator_mode):
         self.__app_id = app_id
@@ -20,7 +19,6 @@ class MSTeamsWebclient:
         self.__emulator_mode = emulator_mode
         self.__token = None
 
-    # Inherited methods
     def send_message(self, identifier, message):
         member = self.__get_member_by_email(identifier)
         conversation = self.__create_conversation(member['id'], identifier.extras)
@@ -57,7 +55,6 @@ class MSTeamsWebclient:
         message.body = f'> **@{message.frm.nick}**: {message.body}\n\n{emoji}'
         reply = self.build_reply(message)
         self.send_reply(reply)
-        # self.send_message(message)
 
     def get_token(self):
         now = datetime.datetime.now()
@@ -78,7 +75,6 @@ class MSTeamsWebclient:
         }
         return activity(req.reply_url, payload)
 
-    # Internal methods
     def __get_member_by_email(self, identifier):
         service_url = identifier.extras['service_url']
         team_id = identifier.extras['team_id']
