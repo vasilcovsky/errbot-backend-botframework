@@ -1,7 +1,11 @@
+import re
 import json
 import logging
 import datetime
 import requests
+import unicodedata
+
+# from botbuilder.core.teams.teams_info import TeamsInfo
 
 from time import sleep
 from urllib.parse import urljoin
@@ -12,35 +16,10 @@ from errbot.core import ErrBot
 from errbot.core_plugins import flask_app
 from errbot.backends.base import Message, Person
 
+from ms_teams_webclient import MSTeamsWebclient
+
 log = logging.getLogger('errbot.backends.botframework')
-authtoken = namedtuple('AuthToken', 'access_token, expired_at')
 activity = namedtuple('Activity', 'post_url, payload')
-
-
-def from_now(seconds):
-    now = datetime.datetime.now()
-    return now + datetime.timedelta(seconds=seconds)
-
-
-def auth(appId, appPasswd):
-    form = {
-        'grant_type': 'client_credentials',
-        'scope': 'https://api.botframework.com/.default',
-        'client_id': appId,
-        'client_secret': appPasswd,
-    }
-
-    r = requests.post(
-        'https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token',
-        data=form
-    ).json()
-
-    expires_in = r['expires_in']
-    expired_at = from_now(expires_in)
-    token = authtoken(r['access_token'], expired_at)
-
-    return token
-
 
 class Conversation:
     """ Wrapper on Activity object.
@@ -49,12 +28,16 @@ class Conversation:
         https://docs.microsoft.com/en-us/bot-framework/rest-api/bot-framework-rest-connector-api-reference#activity-object
     """
 
-    def __init__(self, conversation):
-        self._conversation = conversation
+    def __init__(self, request):
+        self._request = request
+
+    @property
+    def data(self):
+        return self._request
 
     @property
     def conversation(self):
-        return self._conversation['conversation']
+        return self._request['conversation']
 
     @property
     def conversation_id(self):
@@ -62,11 +45,11 @@ class Conversation:
 
     @property
     def activity_id(self):
-        return self._conversation['id']
+        return self._request['id']
 
     @property
     def service_url(self):
-        return self._conversation['serviceUrl']
+        return self._request['serviceUrl']
 
     @property
     def reply_url(self):
@@ -88,11 +71,15 @@ class Identifier(Person):
         self._subject = subject
         self._id = subject.get('id', '<not found>')
         self._name = subject.get('name', '<not found>')
+        self._email = subject.get('email', '<not found>')
+        self._extras = subject.get('extras', '<not found>')
 
     def __str__(self):
         return json.dumps({
             'id': self._id,
-            'name': self._name
+            'name': self._name,
+            'email': self._email,
+            'extras': self._extras
         })
 
     def __eq__(self, other):
@@ -108,7 +95,7 @@ class Identifier(Person):
 
     @property
     def aclattr(self):
-        return self._id
+        return self._email
 
     @property
     def person(self):
@@ -121,6 +108,14 @@ class Identifier(Person):
     @property
     def fullname(self):
         return self._name
+    
+    @property
+    def email(self):
+        return self._email
+
+    @property
+    def extras(self):
+        return self._extras
 
     @property
     def client(self):
@@ -134,34 +129,14 @@ class BotFramework(ErrBot):
         super(BotFramework, self).__init__(config)
 
         identity = config.BOT_IDENTITY
-        self._appId = identity.get('appId', None)
-        self._appPassword = identity.get('appPassword', None)
-        self._token = None
-        self._emulator_mode = self._appId is None or self._appPassword is None
-
+        app_id = identity.get('appId', None)
+        app_password = identity.get('appPassword', None)
+        emulator_mode = app_id is None or app_password is None
+        self.webclient = MSTeamsWebclient(app_id, app_password, emulator_mode)
         self.bot_identifier = None
 
     def _set_bot_identifier(self, identifier):
         self.bot_identifier = identifier
-
-    def _ensure_token(self):
-        """Keep OAuth token valid"""
-        now = datetime.datetime.now()
-        if not self._token or self._token.expired_at <= now:
-            self._token = auth(self._appId, self._appPassword)
-        return self._token.access_token
-
-    def _build_reply(self, msg):
-        conversation = msg.extras['conversation']
-        payload = {
-            'type': 'message',
-            'conversation': conversation.conversation,
-            'from': msg.to.subject,
-            'recipient': msg.frm.subject,
-            'replyToId': conversation.conversation_id,
-            'text': msg.body
-        }
-        return activity(conversation.reply_url, payload)
 
     def _build_feedback(self, msg):
         conversation = msg.extras['conversation']
@@ -172,30 +147,6 @@ class BotFramework(ErrBot):
             'replyToId': conversation.conversation_id,
         }
         return activity(conversation.reply_url, payload)
-
-    def _send_reply(self, response):
-        """Post response to callback url
-
-        Send a reply to URL indicated in serviceUrl from
-        Bot Framework's request object.
-
-        @param response: activity object
-        """
-        headers = {
-            'Content-Type': 'application/json'
-        }
-
-        if not self._emulator_mode:
-            access_token = self._ensure_token()
-            headers['Authorization'] = 'Bearer ' + access_token
-
-        r = requests.post(
-            response.post_url,
-            data=json.dumps(response.payload),
-            headers=headers
-        )
-
-        r.raise_for_status()
 
     def serve_forever(self):
         self._init_handler(self)
@@ -210,15 +161,24 @@ class BotFramework(ErrBot):
             self.disconnect_callback()
             self.shutdown()
 
+    def send(self, identifier, text, in_reply_to = None, groupchat_nick_reply = False):
+        '''
+        This method is used to send direct messages.
+        '''
+        self.webclient.send_message(identifier, text)
+
     def send_message(self, msg):
-        response = self._build_reply(msg)
-        self._send_reply(response)
+        response = self.webclient.build_reply(msg)
+        self.webclient.send_reply(response)
         super(BotFramework, self).send_message(msg)
 
     def build_identifier(self, user):
         return Identifier(user)
 
     def build_reply(self, msg, text=None, private=False, threaded=False):
+        '''
+        This method is used by ErrBot framework to build the Message Object.
+        '''
         return Message(
             body=text,
             parent=msg,
@@ -229,7 +189,10 @@ class BotFramework(ErrBot):
 
     def send_feedback(self, msg):
         feedback = self._build_feedback(msg)
-        self._send_reply(feedback)
+        self.webclient.send_reply(feedback)
+
+    def add_reaction(self, message, reaction):
+        self.webclient.add_reaction(message, reaction)
 
     def build_conversation(self, conv):
         return Conversation(conv)
@@ -246,6 +209,14 @@ class BotFramework(ErrBot):
     @property
     def mode(self):
         return 'BotFramework'
+    
+    def __build_extras_from_request(self, request):
+        extras = {
+            'conversation_id': request['conversation']['id'],
+            'service_url': request['serviceUrl'],
+            'tenant_id': request['channelData']['tenant']['id']
+        }
+        return extras
 
     def _init_handler(self, errbot):
         @flask_app.route('/botframework', methods=['GET', 'OPTIONS'])
@@ -255,16 +226,22 @@ class BotFramework(ErrBot):
         @flask_app.route('/botframework', methods=['POST'])
         def post_botframework():
             req = request.json
+
+            req['text'] = unicodedata.normalize("NFKD", req['text']).encode('ascii', 'ignore').decode('UTF-8')
+
             log.debug('received request: type=[%s] channel=[%s]',
                       req['type'], req['channelId'])
             if req['type'] == 'message':
+                request_extras = self.__build_extras_from_request(req)
+                member = self.webclient.get_member_by_id(req['from']['id'], request_extras)
+
+                req['from'] = member
                 msg = Message(req['text'])
                 msg.frm = errbot.build_identifier(req['from'])
                 msg.to = errbot.build_identifier(req['recipient'])
                 msg.extras['conversation'] = errbot.build_conversation(req)
 
                 errbot._set_bot_identifier(msg.to)
-
                 errbot.send_feedback(msg)
                 errbot.callback_message(msg)
             return ''
