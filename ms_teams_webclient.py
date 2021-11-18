@@ -12,6 +12,8 @@ reactions = {
     'thumbsup': '👍'
 }
 
+AZURE_BOT_PREFIX = '28'
+
 class MSTeamsWebclient:
     def __init__(self, app_id, app_password, emulator_mode):
         self.__app_id = app_id
@@ -30,8 +32,13 @@ class MSTeamsWebclient:
             f'{extras["service_url"]}/v3/conversations/{extras["conversation_id"]}/members/{member_id}',
             headers=self.__get_default_headers()
         )
-        if response.status_code == 404:
-            raise MemberNotFound(f"member not found using {id} id")
+        try:
+            response.raise_for_status()
+        except Exception as e:
+            if response.status_code == 404:
+                raise MemberNotFound(f"member not found using {member_id} id") from e
+            raise e
+
         return response.json()
     
     def send_reply(self, response):
@@ -84,8 +91,12 @@ class MSTeamsWebclient:
             f'{service_url}/v3/conversations/{team_id}/members/{email}',
             headers=self.__get_default_headers()
         )
-        if response.status_code == 404:
-            raise MemberNotFound(f"member not found using {identifier.email} email")
+        try:
+            response.raise_for_status()
+        except Exception as e:
+            if response.status_code == 404:
+                raise MemberNotFound(f"member not found using {identifier.email} email") from e
+            raise e
         return response.json()
 
     def __auth(self):
@@ -123,7 +134,7 @@ class MSTeamsWebclient:
     def __create_conversation(self, member_id, extras):
         body = {
             "bot": {
-                "id": f"28:{self.__app_id}"
+                "id": f"{AZURE_BOT_PREFIX}:{self.__app_id}"
             },
             "members": [
                 {
