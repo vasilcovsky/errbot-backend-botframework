@@ -218,11 +218,11 @@ class BotFramework(ErrBot):
         }
         return extras
 
-    def normalize_utf8(self, text):
+    def __normalize_utf8(self, text):
         '''
         This method normalizes text to UTF-8. During the normalization process,
-        if a character is not present in the ASCII table it is going to be ignored.
-        https://docs.python.org/3/library/unicodedata.html#unicodedata.normalize
+        if a character is not present in the ASCII table, it is going to be ignored.
+        See: https://docs.python.org/3/library/unicodedata.html#unicodedata.normalize
         '''
         return unicodedata.normalize("NFKD", text).encode('ascii', 'ignore').decode('UTF-8')
 
@@ -234,11 +234,8 @@ class BotFramework(ErrBot):
         @flask_app.route('/botframework', methods=['POST'])
         def post_botframework():
             req = request.json
-
-            req['text'] = normalize_utf8(req['text'])
-
-            log.debug('received request: type=[%s] channel=[%s]',
-                      req['type'], req['channelId'])
+            req['text'] = self.__normalize_utf8(req['text'])
+            log.debug('received request: type=[%s] channel=[%s]', req['type'], req['channelId'])
             if req['type'] == 'message':
                 request_extras = self.__build_extras_from_request(req)
                 member = self.webclient.get_member_by_id(req['from']['id'], request_extras)
