@@ -226,6 +226,23 @@ class BotFramework(ErrBot):
         '''
         return unicodedata.normalize("NFKD", text).encode('ascii', 'ignore').decode('UTF-8')
 
+    def build_frm_extras(self, req):
+        service_url = req['serviceUrl']
+        team_id = None
+        tenant_id = None
+
+        if req.get('channelData').get('team'):
+            team_id = req['channelData']['team']['id']
+
+        if req['channelData'].get('tenant'):
+            tenant_id = req['channelData']['tenant']['id']
+
+        return {
+            'service_url': service_url,
+            'team_id': team_id,
+            'tenant_id': tenant_id,
+        }
+
     def _init_handler(self, errbot):
         @flask_app.route('/botframework', methods=['GET', 'OPTIONS'])
         def get_botframework():
@@ -241,6 +258,7 @@ class BotFramework(ErrBot):
                 member = self.webclient.get_member_by_id(req['from']['id'], request_extras)
 
                 req['from'] = member
+                req['from']['extras'] = errbot.build_frm_extras(req)
                 msg = Message(req['text'])
                 msg.frm = errbot.build_identifier(req['from'])
                 msg.to = errbot.build_identifier(req['recipient'])
