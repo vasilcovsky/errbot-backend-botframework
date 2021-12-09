@@ -52,6 +52,10 @@ class Conversation:
         return self._request['serviceUrl']
 
     @property
+    def tenant_id(self):
+        return self._request['channelData']['tenant']['id']
+
+    @property
     def reply_url(self):
         url = 'v3/conversations/{}/activities/{}'.format(
             self.conversation_id,
@@ -165,6 +169,11 @@ class BotFramework(ErrBot):
         '''
         This method is used to send direct messages.
         '''
+        if in_reply_to:
+            in_reply_to.body = text
+            reply = self.webclient.build_reply(in_reply_to)
+            self.webclient.send_reply(reply)
+            return
         self.webclient.send_message(identifier, text)
 
     def send_message(self, msg):
