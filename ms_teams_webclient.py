@@ -106,14 +106,16 @@ class MSTeamsWebclient:
             'client_secret': self.__app_password,
         }
 
-        r = requests.post(
+        req = requests.post(
             'https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token',
             data=form
         ).json()
 
-        expires_in = r['expires_in']
+        expires_in = req.get('expires_in')
+        if not expires_in:
+            raise Exception("We couldn't authorize your bot. Please, verify your AZURE_APP_ID and AZURE_APP_PASSWORD and then try again.")
         expired_at = from_now(expires_in)
-        token = authtoken(r['access_token'], expired_at)
+        token = authtoken(req['access_token'], expired_at)
 
         return token
 

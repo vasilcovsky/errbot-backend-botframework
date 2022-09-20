@@ -62,7 +62,7 @@ class Test_add_reaction:
 
 def inject_mocks():
     backend = BotFramework(mock_config())
-    backend.webclient = mock_backend()
+    backend.ms_teams_webclient = mock_backend()
     return backend
 
 def mock_backend():
