@@ -134,17 +134,21 @@ class BotFramework(ErrBot):
 
     def __init__(self, config):
         super(BotFramework, self).__init__(config)
-
         identity = config.BOT_IDENTITY
+        self.__start_ms_teams_webclient(identity)
+        self.__start_graph_webclient(identity)
+        self.bot_identifier = None
+
+    def __start_ms_teams_webclient(self, identity):
         app_id = identity.get('app_id', None)
         app_password = identity.get('app_password', None)
+        self.ms_teams_webclient = MSTeamsWebclient(app_id, app_password)
+
+    def __start_graph_webclient(self, identity):
         ad_tenant_id = identity.get('ad_tenant_id', None)
         ad_app_id = identity.get('ad_app_id', None)
         ad_app_secret = identity.get('ad_app_secret', None)
-        emulator_mode = app_id is None or app_password is None
-        self.ms_teams_webclient = MSTeamsWebclient(app_id, app_password, emulator_mode)
-        self.ms_graph_webclient = MSGraphWebClient(ad_app_id, ad_app_secret, ad_tenant_id, emulator_mode)
-        self.bot_identifier = None
+        self.ms_graph_webclient = MSGraphWebClient(ad_app_id, ad_app_secret, ad_tenant_id)
 
     def _set_bot_identifier(self, identifier):
         self.bot_identifier = identifier
@@ -262,6 +266,9 @@ class BotFramework(ErrBot):
             'team_id': team_id,
             'tenant_id': tenant_id,
         }
+
+    def azure_active_directory_is_configured(self):
+        return self.ms_graph_webclient.is_configured()
 
     def _init_handler(self, errbot):
         @flask_app.route('/botframework', methods=['GET', 'OPTIONS'])

@@ -15,11 +15,17 @@ reactions = {
 AZURE_BOT_PREFIX = '28'
 
 class MSTeamsWebclient:
-    def __init__(self, app_id, app_password, emulator_mode):
+    def __init__(self, app_id, app_password, emulator_mode = False):
         self.__app_id = app_id
         self.__app_password = app_password
+        self.__validate_credentials()
         self.__emulator_mode = emulator_mode
         self.__token = None
+
+    def __validate_credentials(self):
+        missing_credentials = self.__app_id is None or self.__app_password is None
+        if missing_credentials:
+            raise Exception("You need to provide the AZURE_APP_ID and AZURE_APP_PASSWORD environment variables.")
 
     def send_message(self, identifier, message):
         member = self.__get_member_by_email(identifier)
