@@ -142,7 +142,7 @@ class BotFramework(ErrBot):
     def __start_ms_teams_webclient(self, identity):
         app_id = identity.get('app_id', None)
         app_password = identity.get('app_password', None)
-        self.ms_teams_webclient = MSTeamsWebclient(app_id, app_password)
+        self.ms_teams_webclient = MSTeamsWebclient(app_id, app_password, app_id is None or app_password is None)
 
     def __start_graph_webclient(self, identity):
         ad_tenant_id = identity.get('ad_tenant_id', None)
