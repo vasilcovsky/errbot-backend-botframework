@@ -15,11 +15,19 @@ reactions = {
 AZURE_BOT_PREFIX = '28'
 
 class MSTeamsWebclient:
-    def __init__(self, app_id, app_password, emulator_mode):
+    def __init__(self, app_id, app_password, emulator_mode = False):
         self.__app_id = app_id
         self.__app_password = app_password
         self.__emulator_mode = emulator_mode
         self.__token = None
+        self.__validate_credentials()
+
+    def __validate_credentials(self):
+        if self.__emulator_mode:
+            return
+        missing_credentials = self.__app_id is None or self.__app_password is None
+        if missing_credentials:
+            raise Exception("You need to provide the AZURE_APP_ID and AZURE_APP_PASSWORD environment variables.")
 
     def send_message(self, identifier, message):
         member = self.__get_member_by_email(identifier)
@@ -106,14 +114,16 @@ class MSTeamsWebclient:
             'client_secret': self.__app_password,
         }
 
-        r = requests.post(
+        req = requests.post(
             'https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token',
             data=form
         ).json()
 
-        expires_in = r['expires_in']
+        expires_in = req.get('expires_in')
+        if not expires_in:
+            raise Exception("We couldn't authorize your bot. Please, verify your AZURE_APP_ID and AZURE_APP_PASSWORD and then try again.")
         expired_at = from_now(expires_in)
-        token = authtoken(r['access_token'], expired_at)
+        token = authtoken(req['access_token'], expired_at)
 
         return token
 

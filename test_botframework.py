@@ -23,9 +23,9 @@ class Test_send_message:
         message = Message(body=default_reply['text'])
         with patch("errbot.core.ErrBot.send_message"):
             mocked_backend.send_message(message)
-            assert len(mocked_backend.webclient.build_reply.call_args_list) == 1
-            assert len(mocked_backend.webclient.send_reply.call_args_list) == 1
-            assert mocked_backend.webclient.send_reply.call_args_list[0] == call(default_reply)
+            assert len(mocked_backend.ms_teams_webclient.build_reply.call_args_list) == 1
+            assert len(mocked_backend.ms_teams_webclient.send_reply.call_args_list) == 1
+            assert mocked_backend.ms_teams_webclient.send_reply.call_args_list[0] == call(default_reply)
 
 class Test_send_feedback:
     @pytest.fixture
@@ -46,7 +46,7 @@ class Test_send_feedback:
                           extras=extras,
                           to=Identifier({}))
         mocked_backend.send_feedback(message)
-        assert len(mocked_backend.webclient.send_reply.call_args_list) == 1
+        assert len(mocked_backend.ms_teams_webclient.send_reply.call_args_list) == 1
 
 class Test_add_reaction:
     @pytest.fixture
@@ -57,12 +57,12 @@ class Test_add_reaction:
         message = Message(body=default_reply['text'])
         reaction = 'thumbsup'
         mocked_backend.add_reaction(message, reaction)
-        assert len(mocked_backend.webclient.add_reaction.call_args_list) == 1
-        assert mocked_backend.webclient.add_reaction.call_args_list[0] == call(message, reaction)
+        assert len(mocked_backend.ms_teams_webclient.add_reaction.call_args_list) == 1
+        assert mocked_backend.ms_teams_webclient.add_reaction.call_args_list[0] == call(message, reaction)
 
 def inject_mocks():
     backend = BotFramework(mock_config())
-    backend.webclient = mock_backend()
+    backend.ms_teams_webclient = mock_backend()
     return backend
 
 def mock_backend():
