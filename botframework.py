@@ -1,6 +1,7 @@
 import json
 import logging
 import unicodedata
+import re
 
 # from botbuilder.core.teams.teams_info import TeamsInfo
 
@@ -11,7 +12,7 @@ from collections import namedtuple
 from flask import request
 from errbot.core import ErrBot
 from errbot.core_plugins import flask_app
-from errbot.backends.base import Message, Person
+from errbot.backends.base import Message, Person, Room
 
 from ms_graph_webclient import MSGraphWebClient
 from ms_teams_webclient import MSTeamsWebclient
@@ -129,6 +130,40 @@ class Identifier(Person):
         return '<not set>'
 
 
+class Team():
+    def __init__(self, data: dict):
+        self._id = data.get('id')
+        self._name = data.get('displayName')
+
+    @property
+    def id(self):
+        return self._id
+
+    @property
+    def name(self):
+        return self._name
+
+
+class ChannelIdentifier(Room):
+    def __init__(self, data: dict):
+        self._id = data.get('id')
+        self._name = data.get('displayName')
+        if data.get('team') is not None:
+            self._team = Team(data['team'])
+
+    @property
+    def id(self):
+        return self._id
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def team(self):
+        return self._team
+
+
 class BotFramework(ErrBot):
     """Errbot Backend for Bot Framework"""
 
@@ -180,6 +215,14 @@ class BotFramework(ErrBot):
         '''
         This method is used to send direct messages.
         '''
+        if isinstance(identifier, Identifier):
+            return self.__send_direct_message(identifier, text, in_reply_to=in_reply_to, groupchat_nick_reply=groupchat_nick_reply)
+        return self.__send_channel_message(identifier, text)
+
+    def __send_channel_message(self, identifier, text):
+        self.ms_teams_webclient.send_channel_message(identifier, text)
+
+    def __send_direct_message(self, identifier, text, in_reply_to=None, groupchat_nick_reply=False):
         if in_reply_to:
             in_reply_to.body = text
             reply = self.ms_teams_webclient.build_reply(in_reply_to)
@@ -192,8 +235,16 @@ class BotFramework(ErrBot):
         self.ms_teams_webclient.send_reply(response)
         super(BotFramework, self).send_message(msg)
 
-    def build_identifier(self, user):
-        return Identifier(user)
+    def build_identifier(self, data):
+        if isinstance(data, str):
+            match = re.match(r'(.+)###(.+)', data)
+            team_name = match.group(1)
+            channel_name = match.group(2)
+            serialized_team = self.ms_graph_webclient.get_team_by_name(team_name)
+            serialized_channel = self.ms_graph_webclient.get_channel_by_name(serialized_team['id'], channel_name)
+            serialized_channel['team'] = serialized_team
+            return ChannelIdentifier(serialized_channel)
+        return Identifier(data)
 
     def build_reply(self, msg, text=None, private=False, threaded=False):
         '''
@@ -234,6 +285,29 @@ class BotFramework(ErrBot):
         user = self.ms_graph_webclient.get_user_by_id(aad_id)
         return user['otherMails']
 
+    def get_channels_by_team_thread_id(self, team_id):
+        team = self.ms_teams_webclient.get_team_by_id(team_id)
+        conversations = self.ms_teams_webclient.get_conversations_by_team(team_id)
+        identifiers = []
+        for conversation in conversations:
+            identifiers.append(ChannelIdentifier({
+                'id': conversation['id'],
+                'displayName': conversation.get('name', ''),
+                'team': {
+                    'id': team['id'],
+                    'displayName': team['name']
+                },
+            }))
+        return identifiers
+
+    def get_channel_by_id(self, team_id, channel_id):
+        channels = self.get_channels_by_team_thread_id(team_id)
+        for channel in channels:
+            if channel.id == channel_id:
+                return channel
+        log.error(f'Cannot find channel "{channel_id}" from team "{team_id}"')
+        raise Exception("Cannot find channel")
+
     def __build_extras_from_request(self, request):
         extras = {
             'conversation_id': request['conversation']['id'],
@@ -254,21 +328,27 @@ class BotFramework(ErrBot):
         service_url = req['serviceUrl']
         team_id = None
         tenant_id = None
+        channel_id = None
 
         if req.get('channelData').get('team'):
             team_id = req['channelData']['team']['id']
-
         if req['channelData'].get('tenant'):
             tenant_id = req['channelData']['tenant']['id']
+        if req['channelData'].get('teamsChannelId'):
+            channel_id = req['channelData']['teamsChannelId']
 
         return {
             'service_url': service_url,
             'team_id': team_id,
+            'channel_id': channel_id,
             'tenant_id': tenant_id,
         }
 
     def azure_active_directory_is_configured(self):
         return self.ms_graph_webclient.is_configured()
+
+    def set_service_url(self, service_url):
+        self.ms_teams_webclient.set_service_url(service_url)
 
     def _init_handler(self, errbot):
         @flask_app.route('/botframework', methods=['GET', 'OPTIONS'])
@@ -291,6 +371,7 @@ class BotFramework(ErrBot):
                 msg.to = errbot.build_identifier(req['recipient'])
                 msg.extras['conversation'] = errbot.build_conversation(req)
 
+                errbot.set_service_url(req['from']['extras']['service_url'])
                 errbot._set_bot_identifier(msg.to)
                 errbot.send_feedback(msg)
                 errbot.callback_message(msg)

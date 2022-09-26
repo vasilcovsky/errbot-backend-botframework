@@ -39,6 +39,44 @@ class MSGraphWebClient:
             raise e
         return res.json()
 
+    def get_team_by_name(self, team_name):
+        response = requests.get(
+            f"https://graph.microsoft.com/beta/teams",
+            params={'$filter': f"displayName eq '{team_name}'"},
+            headers=self.__get_default_headers()
+        )
+        try:
+            response.raise_for_status()
+        except Exception as e:
+            log.error(f'unable to find the team "{team_name}": {str(e)}')
+            raise Exception(f"An Admin Team was defined but it's unreachable.")
+        return response.json().get('value')[0]
+
+    def get_channel_by_name(self, team_id, channel_name):
+        response = requests.get(
+            f"https://graph.microsoft.com/beta/teams/{team_id}/channels",
+            params={'$filter': f"displayName eq '{channel_name}'"},
+            headers=self.__get_default_headers()
+        )
+        try:
+            response.raise_for_status()
+        except Exception as e:
+            log.error(f'unable to find the channel "{channel_name}": {str(e)}')
+            raise Exception(f"An Admin Channel was defined but it's unreachable.")
+        return response.json().get('value')[0]
+
+    def get_channel_by_id(self, team_id, channel_id):
+        response = requests.get(
+            f"https://graph.microsoft.com/beta/teams/{team_id}/channels/{channel_id}",
+            headers=self.__get_default_headers()
+        )
+        try:
+            response.raise_for_status()
+        except Exception as e:
+            log.error(f'unable to find the channel by id: {str(e)}')
+            raise Exception(f"An Admin Channel was defined but it's unreachable.")
+        return response.json().get('value')[0]
+
     def __get_default_headers(self):
         headers = {
             'Content-Type': 'application/json'

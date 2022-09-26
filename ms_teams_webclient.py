@@ -1,12 +1,14 @@
 import datetime
 import json
 import requests
+import logging
 from collections import namedtuple
 from exceptions import MemberNotFound
 from util import from_now
 
 authtoken = namedtuple('AuthToken', 'access_token, expired_at')
 activity = namedtuple('Activity', 'post_url, payload')
+log = logging.getLogger('errbot.backends.botframework')
 
 reactions = {
     'thumbsup': '👍'
@@ -20,6 +22,7 @@ class MSTeamsWebclient:
         self.__app_password = app_password
         self.__emulator_mode = emulator_mode
         self.__token = None
+        self.__service_url = None
         self.__validate_credentials()
 
     def __validate_credentials(self):
@@ -29,11 +32,39 @@ class MSTeamsWebclient:
         if missing_credentials:
             raise Exception("You need to provide the AZURE_APP_ID and AZURE_APP_PASSWORD environment variables.")
 
+    def set_service_url(self, service_url):
+        self.__service_url = service_url
+
     def send_message(self, identifier, message):
         member = self.__get_member_by_email(identifier)
         conversation = self.__create_conversation(member['id'], identifier.extras)
         identifier.extras['conversation'] = conversation
         self.__send_direct_message(message, identifier.extras)
+
+    def send_channel_message(self, identifier, text):
+        body = {
+            "isGroup": False,
+            "channelData": {
+                "channel": {
+                    "id": identifier.id
+                }
+            },
+            "activity": {
+                "type": "message",
+                "text": text,
+                "textFormatting": "markdown"
+            }
+        }
+        response = requests.post(
+            f'{self.__service_url}v3/conversations',
+            json.dumps(body),
+            headers=self.__get_default_headers()
+        )
+        try:
+            response.raise_for_status()
+        except Exception as e:
+            log.error(f"Unable to send a message to the channel '{identifier.name}': {str(e)}")
+            raise Exception(f"Unable to send a message to the admins channel.")
 
     def get_member_by_id(self, member_id, extras):
         response = requests.get(
@@ -103,8 +134,33 @@ class MSTeamsWebclient:
             return response.json()
         except Exception as e:
             if response.status_code == 404:
+                log.error(f"Unable to find member by email \"{identifier.email}\": {str(e)}")
                 raise MemberNotFound(f"member not found using {identifier.email} email") from e
             raise e
+
+    def get_conversations_by_team(self, team_id):
+        response = requests.get(
+            f'{self.__service_url}/v3/teams/{team_id}/conversations',
+            headers=self.__get_default_headers(),
+        )
+        try:
+            response.raise_for_status()
+        except Exception as e:
+            log.error(f"Unable to retrieve team \"{team_id}\" conversations: {str(e)}")
+            raise e
+        return response.json()['conversations']
+
+    def get_team_by_id(self, team_id):
+        response = requests.get(
+            f'{self.__service_url}/v3/teams/{team_id}',
+            headers=self.__get_default_headers(),
+        )
+        try:
+            response.raise_for_status()
+        except Exception as e:
+            log.error(f"Cannot find team \"{team_id}\": {str(e)}")
+            raise e
+        return response.json()
 
     def __auth(self):
         form = {
