@@ -236,15 +236,18 @@ class BotFramework(ErrBot):
         super(BotFramework, self).send_message(msg)
 
     def build_identifier(self, data):
-        if isinstance(data, str):
-            match = re.match(r'(.+)###(.+)', data)
-            team_name = match.group(1)
-            channel_name = match.group(2)
-            serialized_team = self.ms_graph_webclient.get_team_by_name(team_name)
-            serialized_channel = self.ms_graph_webclient.get_channel_by_name(serialized_team['id'], channel_name)
-            serialized_channel['team'] = serialized_team
-            return ChannelIdentifier(serialized_channel)
-        return Identifier(data)
+        if not isinstance(data, str):
+            return Identifier(data)
+        match = re.match(r'(.+)###(.+)', data)
+        if match is None:
+            log.error(f'The provided channel "{data}" needs to match the following syntax: "team name###channel name".')
+            raise Exception(f'The provided channel name is incorrect.')
+        team_name = match.group(1)
+        channel_name = match.group(2)
+        serialized_team = self.ms_graph_webclient.get_team_by_name(team_name)
+        serialized_channel = self.ms_graph_webclient.get_channel_by_name(serialized_team['id'], channel_name)
+        serialized_channel['team'] = serialized_team
+        return ChannelIdentifier(serialized_channel)
 
     def build_reply(self, msg, text=None, private=False, threaded=False):
         '''
@@ -292,7 +295,8 @@ class BotFramework(ErrBot):
         for conversation in conversations:
             identifiers.append(ChannelIdentifier({
                 'id': conversation['id'],
-                'displayName': conversation.get('name', ''),
+                # TODO: the default value of the channel shouldn't be hardcoded because it changes depending on the language 
+                'displayName': conversation.get('name', 'General'),
                 'team': {
                     'id': team['id'],
                     'displayName': team['name']
