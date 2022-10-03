@@ -17,26 +17,28 @@ reactions = {
 AZURE_BOT_PREFIX = '28'
 
 class MSTeamsWebclient:
-    def __init__(self, app_id, app_password, emulator_mode = False):
+    def __init__(self, app_id, app_password, tenant_id, emulator_mode = False):
         self.__app_id = app_id
         self.__app_password = app_password
+        self.__tenant_id = tenant_id
         self.__emulator_mode = emulator_mode
         self.__token = None
-        self.__service_url = None
+        self.__service_url = 'https://smba.trafficmanager.net/amer/'
         self.__validate_credentials()
 
     def __validate_credentials(self):
         if self.__emulator_mode:
             return
-        missing_credentials = self.__app_id is None or self.__app_password is None
+        missing_credentials = self.__app_id is None or self.__app_password is None or self.__tenant_id is None
         if missing_credentials:
-            raise Exception("You need to provide the AZURE_APP_ID and AZURE_APP_PASSWORD environment variables.")
+            raise Exception("You need to provide the AZURE_APP_ID, AZURE_APP_PASSWORD and AZURE_AD_TENANT_ID environment variables.")
 
     def set_service_url(self, service_url):
         self.__service_url = service_url
 
     def send_message(self, identifier, message):
-        member = self.__get_member_by_email(identifier)
+        # TODO: make a workaround to get the user info if the user isn't a member of the provided team_id
+        member = self.get_member_by_email(identifier.email, identifier.extras['team_id'])
         conversation = self.__create_conversation(member['id'], identifier.extras)
         identifier.extras['conversation'] = conversation
         self.__send_direct_message(message, identifier.extras)
@@ -66,9 +68,9 @@ class MSTeamsWebclient:
             log.error(f"Unable to send a message to the channel '{identifier.name}': {str(e)}")
             raise Exception(f"Unable to send a message to the admins channel.")
 
-    def get_member_by_id(self, member_id, extras):
+    def get_member_by_id(self, member_id, conversation_id):
         response = requests.get(
-            f'{extras["service_url"]}/v3/conversations/{extras["conversation_id"]}/members/{member_id}',
+            f'{self.__service_url}/v3/conversations/{conversation_id}/members/{member_id}',
             headers=self.__get_default_headers()
         )
         try:
@@ -79,8 +81,8 @@ class MSTeamsWebclient:
             raise e
 
         return response.json()
-    
-    def send_reply(self, response):
+
+    def send_ack_reply(self, message):
         """Post response to callback url
 
         Send a reply to URL indicated in serviceUrl from
@@ -88,19 +90,34 @@ class MSTeamsWebclient:
 
         @param response: activity object
         """
+        reply = self.__build_ack_reply(message)
         r = requests.post(
-            response.post_url,
-            data=json.dumps(response.payload),
+            reply.post_url,
+            data=json.dumps(reply.payload),
             headers=self.__get_default_headers()
         )
+        r.raise_for_status()
+    
+    def send_reply(self, message):
+        """Post response to callback url
 
+        Send a reply to URL indicated in serviceUrl from
+        Bot Framework's request object.
+
+        @param response: activity object
+        """
+        reply = self.__build_reply(message)
+        r = requests.post(
+            reply.post_url,
+            data=json.dumps(reply.payload),
+            headers=self.__get_default_headers()
+        )
         r.raise_for_status()
 
     def add_reaction(self, message, reaction):
         emoji = reactions[reaction] if reactions[reaction] else ''
         message.body = f'> **@{message.frm.nick}**: {message.body}\n\n{emoji}'
-        reply = self.build_reply(message)
-        self.send_reply(reply)
+        self.send_reply(message)
 
     def get_token(self):
         now = datetime.datetime.now()
@@ -108,25 +125,32 @@ class MSTeamsWebclient:
             self.__token = self.__auth()
         return self.__token.access_token
     
-    def build_reply(self, message):
+    def __build_reply(self, message):
         req = message.extras['conversation']
         payload = {
             'type': 'message',
             'conversation': req.conversation,
-            'from': message.to.subject,
-            'recipient': message.frm.subject,
+            'from': message.to.to_dict(),
+            'recipient': message.frm.to_dict(),
             'replyToId': req.conversation_id,
             'text': message.body,
             'textFormat': 'markdown'
         }
         return activity(req.reply_url, payload)
 
-    def __get_member_by_email(self, identifier):
-        service_url = identifier.extras['service_url']
-        team_id = identifier.extras['team_id']
-        email = identifier.email
+    def __build_ack_reply(self, msg):
+        conversation = msg.extras['conversation']
+        payload = {
+            'type': 'typing',
+            'conversation': conversation.conversation,
+            'from': msg.to.to_dict(),
+            'replyToId': conversation.conversation_id,
+        }
+        return activity(conversation.reply_url, payload)
+
+    def get_member_by_email(self, email, team_id):
         response = requests.get(
-            f'{service_url}/v3/conversations/{team_id}/members/{email}',
+            f'{self.__service_url}/v3/conversations/{team_id}/members/{email}',
             headers=self.__get_default_headers()
         )
         try:
@@ -134,8 +158,8 @@ class MSTeamsWebclient:
             return response.json()
         except Exception as e:
             if response.status_code == 404:
-                log.error(f"Unable to find member by email \"{identifier.email}\": {str(e)}")
-                raise MemberNotFound(f"member not found using {identifier.email} email") from e
+                log.error(f"Unable to find member by email \"{email}\": {str(e)}")
+                raise MemberNotFound(f"member not found using {email} email") from e
             raise e
 
     def get_conversations_by_team(self, team_id):
@@ -150,6 +174,13 @@ class MSTeamsWebclient:
             raise e
         return response.json()['conversations']
 
+    def get_conversation_by_id(self, team_id, conversation_id):
+        conversations = self.get_conversations_by_team(team_id)
+        for conversation in conversations:
+            if conversation['id'] == conversation_id:
+                return conversation
+        return None
+
     def get_team_by_id(self, team_id):
         response = requests.get(
             f'{self.__service_url}/v3/teams/{team_id}',
@@ -159,6 +190,20 @@ class MSTeamsWebclient:
             response.raise_for_status()
         except Exception as e:
             log.error(f"Cannot find team \"{team_id}\": {str(e)}")
+            raise e
+        return response.json()
+
+    def get_conversation_members(self, conversation_id):
+        if not self.__service_url:
+            return []
+        response = requests.get(
+            f'{self.__service_url}/v3/conversations/{conversation_id}/members',
+            headers=self.__get_default_headers(),
+        )
+        try:
+            response.raise_for_status()
+        except Exception as e:
+            log.error(f"Cannot retrieve members of the conversation \"{conversation_id}\": {str(e)}")
             raise e
         return response.json()
 
@@ -189,7 +234,7 @@ class MSTeamsWebclient:
             "text": text
         }
         response = requests.post(
-            f'{extras["service_url"]}/v3/conversations/{extras["conversation"]["id"]}/activities/',
+            f'{self.__service_url}/v3/conversations/{extras["conversation"]["id"]}/activities/',
             json.dumps(body),
             headers=self.__get_default_headers()
         )
@@ -208,12 +253,12 @@ class MSTeamsWebclient:
             ],
             "channelData": {
                 "tenant": {
-                    "id": extras['tenant_id']
+                    "id": self.__tenant_id
                 }
             }
         }
         response = requests.post(
-            f'{extras["service_url"]}/v3/conversations',
+            f'{self.__service_url}/v3/conversations',
             json.dumps(body),
             headers=self.__get_default_headers()
         )

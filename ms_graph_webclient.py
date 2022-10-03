@@ -52,6 +52,19 @@ class MSGraphWebClient:
             raise Exception(f"An Admin Team was defined but it's unreachable.")
         return response.json().get('value')[0]
 
+    def get_default_channel_from_team(self, team_id):
+        response = requests.get(
+            f"https://graph.microsoft.com/beta/teams/{team_id}/channels",
+            params={'$filter': "moderationSettings eq null"},
+            headers=self.__get_default_headers()
+        )
+        try:
+            response.raise_for_status()
+        except Exception as e:
+            log.error(f'unable to find the default channel of the team "{team_id}": {str(e)}')
+            raise Exception(f"The Default Channel of the defined Admin Team is unreachable.")
+        return response.json().get('value')[0]
+
     def get_channel_by_name(self, team_id, channel_name):
         response = requests.get(
             f"https://graph.microsoft.com/beta/teams/{team_id}/channels",
