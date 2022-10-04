@@ -23,9 +23,8 @@ class Test_send_message:
         message = Message(body=default_reply['text'])
         with patch("errbot.core.ErrBot.send_message"):
             mocked_backend.send_message(message)
-            assert len(mocked_backend.ms_teams_webclient.build_reply.call_args_list) == 1
             assert len(mocked_backend.ms_teams_webclient.send_reply.call_args_list) == 1
-            assert mocked_backend.ms_teams_webclient.send_reply.call_args_list[0] == call(default_reply)
+            assert mocked_backend.ms_teams_webclient.send_reply.call_args_list[0] == call(message)
 
 class Test_send_feedback:
     @pytest.fixture
@@ -46,7 +45,7 @@ class Test_send_feedback:
                           extras=extras,
                           to=Identifier({}))
         mocked_backend.send_feedback(message)
-        assert len(mocked_backend.ms_teams_webclient.send_reply.call_args_list) == 1
+        assert len(mocked_backend.ms_teams_webclient.send_ack_reply.call_args_list) == 1
 
 class Test_add_reaction:
     @pytest.fixture
