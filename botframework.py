@@ -269,8 +269,8 @@ class BotFramework(ErrBot):
         self.ms_teams_webclient.send_reply(msg)
         super(BotFramework, self).send_message(msg)
 
-    def build_identifier(self, strrep):
-        log.debug("Building identifier of", strrep)
+    def build_identifier(self, strrep: str):
+        log.debug("Building identifier of %s", strrep)
         [person_email, team_name, channel_name] = self.__extract_identifier_rep(strrep)
         person = None
         channel = None

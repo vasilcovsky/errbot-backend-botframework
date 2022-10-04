@@ -158,8 +158,9 @@ class MSTeamsWebclient:
             return response.json()
         except Exception as e:
             if response.status_code == 404:
-                log.error(f"Unable to find member by email \"{email}\": {str(e)}")
-                raise MemberNotFound(f"member not found using {email} email") from e
+                log.error(f"Unable to find member by email \"{email}\": {str(e)}. " +
+                          f"Please, make sure the member belongs to the team \"{team_id}\".")
+                raise MemberNotFound(f"Unable to find member by email \"{email}\". Are they in the team?") from e
             raise e
 
     def get_conversations_by_team(self, team_id):

@@ -17,10 +17,10 @@ class MSGraphWebClient:
         self.__token = None
 
     def __validate_credentials(self):
-        missing_credentials = self.__tenant_id is None or self.__ad_app_id is None or self.__ad_app_secret is None
-        should_enable_client = self.__tenant_id is not None or self.__ad_app_id is not None or self.__ad_app_secret is not None
+        missing_credentials = self.__ad_app_id is None or self.__ad_app_secret is None
+        should_enable_client = self.__ad_app_id is not None or self.__ad_app_secret is not None
         if should_enable_client and missing_credentials:
-            raise Exception("Missing at least one of the following variables: AZURE_AD_TENANT_ID, AZURE_AD_APP_ID and AZURE_AD_APP_SECRET. Please, check your configuration.")
+            raise Exception("Missing at least one of the following variables: AZURE_AD_APP_ID and AZURE_AD_APP_SECRET. Please, check your configuration.")
 
     def is_configured(self):
         return self.__tenant_id is not None and self.__ad_app_id is not None and self.__ad_app_secret is not None
@@ -48,6 +48,8 @@ class MSGraphWebClient:
         try:
             response.raise_for_status()
         except Exception as e:
+            if response.status_code == 401:
+                self.__raise_auth_exception()
             log.error(f'unable to find the team "{team_name}": {str(e)}')
             raise Exception(f"An Admin Team was defined but it's unreachable.")
         return response.json().get('value')[0]
@@ -61,6 +63,8 @@ class MSGraphWebClient:
         try:
             response.raise_for_status()
         except Exception as e:
+            if response.status_code == 401:
+                self.__raise_auth_exception()
             log.error(f'unable to find the default channel of the team "{team_id}": {str(e)}')
             raise Exception(f"The Default Channel of the defined Admin Team is unreachable.")
         return response.json().get('value')[0]
@@ -74,6 +78,8 @@ class MSGraphWebClient:
         try:
             response.raise_for_status()
         except Exception as e:
+            if response.status_code == 401:
+                self.__raise_auth_exception()
             log.error(f'unable to find the channel "{channel_name}": {str(e)}')
             raise Exception(f"An Admin Channel was defined but it's unreachable.")
         return response.json().get('value')[0]
@@ -86,6 +92,8 @@ class MSGraphWebClient:
         try:
             response.raise_for_status()
         except Exception as e:
+            if response.status_code == 401:
+                self.__raise_auth_exception()
             log.error(f'unable to find the channel by id: {str(e)}')
             raise Exception(f"An Admin Channel was defined but it's unreachable.")
         return response.json().get('value')[0]
