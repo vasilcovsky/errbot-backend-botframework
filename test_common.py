@@ -12,6 +12,9 @@ class DummyConfig:
 
 def mock_config():
     return DummyConfig({
-        'appId': 'AZURE_APP_ID',
-        'appPassword': 'AZURE_APP_PASSWORD',
+        'app_id': 'AZURE_APP_ID',
+        'app_password': 'AZURE_APP_PASSWORD',
+        'ad_tenant_id': 'AZURE_APP_PASSWORD',
+        'ad_app_id': 'AZURE_APP_PASSWORD',
+        'ad_app_secret': 'AZURE_APP_PASSWORD',
     })

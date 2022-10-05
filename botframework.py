@@ -261,7 +261,7 @@ class BotFramework(ErrBot):
     def __send_direct_message(self, identifier, text, in_reply_to=None, groupchat_nick_reply=False):
         if in_reply_to:
             in_reply_to.body = text
-            self.ms_teams_webclient.send_reply(in_reply_to)
+            self.send_message(in_reply_to)
             return
         self.ms_teams_webclient.send_message(identifier, text)
 
@@ -349,11 +349,12 @@ class BotFramework(ErrBot):
     @property
     def mode(self):
         return 'BotFramework'
-    
+
     def get_other_emails_by_aad_id(self, aad_id):
         user = self.ms_graph_webclient.get_user_by_id(aad_id)
         return user['otherMails']
 
+    # TODO: add tests
     def get_channels_by_team_thread_id(self, team_id):
         team = self.ms_teams_webclient.get_team_by_id(team_id)
         conversations = self.ms_teams_webclient.get_conversations_by_team(team_id)
@@ -369,6 +370,7 @@ class BotFramework(ErrBot):
             }))
         return identifiers
 
+    # TODO: add tests
     def get_channel_by_id(self, team_id, channel_id):
         channels = self.get_channels_by_team_thread_id(team_id)
         for channel in channels:
@@ -377,6 +379,7 @@ class BotFramework(ErrBot):
         log.error(f'Cannot find channel "{channel_id}" from team "{team_id}"')
         raise Exception("Cannot find channel")
 
+    # TODO: add tests
     def conversation_members(self, channel):
         serialized_members = self.ms_teams_webclient.get_conversation_members(channel.id)
         members = []
@@ -398,6 +401,7 @@ class BotFramework(ErrBot):
     def set_service_url(self, service_url):
         self.ms_teams_webclient.set_service_url(service_url)
 
+    # TODO: add tests
     def get_channel_and_team_info(self, req_channel_data):
         team = self.ms_teams_webclient.get_team_by_id(req_channel_data['team']['id'])
         channel = self.ms_teams_webclient.get_conversation_by_id(team['id'], req_channel_data['channel']['id'])
