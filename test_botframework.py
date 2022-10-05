@@ -10,6 +10,7 @@ member_name = 'member name'
 member_email = 'member@email.com'
 team_id = 1
 team_name = 'admin team'
+channel_id = 1
 channel_name = 'admin channel'
 conversation_id = 1
 default_reply = {
@@ -181,6 +182,42 @@ class Test_build_identifier:
         assert identifier.team.name == team_name
 
 
+class Test_get_channel_by_id:
+    @pytest.fixture
+    def mocked_backend(self):
+        return inject_mocks()
+
+    def test_when_find_channel(self, mocked_backend):
+        mocked_backend.ms_teams_webclient.get_team_by_id = MagicMock(return_value=mocked_serialized_team(team_name))
+        mocked_backend.ms_teams_webclient.get_conversations_by_team = MagicMock(return_value=[
+            mocked_serialized_channel(channel_name, id=0),
+            mocked_serialized_channel(channel_name, id=channel_id)
+        ])
+        channel = mocked_backend.get_channel_by_id(team_id, channel_id)
+        assert mocked_backend.ms_teams_webclient.get_team_by_id.call_count == 1
+        assert mocked_backend.ms_teams_webclient.get_team_by_id.call_args_list[0] == call(team_id)
+        assert mocked_backend.ms_teams_webclient.get_conversations_by_team.call_count == 1
+        assert mocked_backend.ms_teams_webclient.get_conversations_by_team.call_args_list[0] == call(team_id)
+        assert channel.id == channel_id
+        assert channel.name == channel_name
+        assert channel.team.id == team_id
+        assert channel.team.name == team_name
+
+    def test_when_dont_find_channel(self, mocked_backend):
+        mocked_backend.ms_teams_webclient.get_team_by_id = MagicMock(return_value=mocked_serialized_team(team_name))
+        mocked_backend.ms_teams_webclient.get_conversations_by_team = MagicMock(return_value=[
+            mocked_serialized_channel(channel_name, id=0),
+        ])
+        with pytest.raises(Exception) as ex:
+            mocked_backend.get_channel_by_id(team_id, channel_id)
+            assert mocked_backend.ms_teams_webclient.get_team_by_id.call_count == 1
+            assert mocked_backend.ms_teams_webclient.get_team_by_id.call_args_list[0] == call(team_id)
+            assert mocked_backend.ms_teams_webclient.get_conversations_by_team.call_count == 1
+            assert mocked_backend.ms_teams_webclient.get_conversations_by_team.call_args_list[0] == call(team_id)
+            assert ex == Exception("Cannot find channel")
+
+
+
 def inject_mocks():
     backend = BotFramework(mock_config())
     backend.ms_teams_webclient = mock_backend()
@@ -216,7 +253,8 @@ def mocked_serialized_team(name):
         'name': name
     }
 
-def mocked_serialized_channel(name):
+def mocked_serialized_channel(name, id=None):
     return {
+        'id': id,
         'name': name
     }
