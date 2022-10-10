@@ -361,7 +361,7 @@ class BotFramework(ErrBot):
         for conversation in conversations:
             identifiers.append(ChannelIdentifier({
                 'id': conversation['id'],
-                'displayName': conversation.get('name', 'General'),
+                'displayName': conversation.get('name', ''),
                 'team': {
                     'id': team['id'],
                     'displayName': team['name']
