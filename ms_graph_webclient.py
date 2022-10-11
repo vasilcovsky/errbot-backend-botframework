@@ -67,7 +67,9 @@ class MSGraphWebClient:
                 self.__raise_auth_exception()
             log.error(f'unable to find the default channel of the team "{team_id}": {str(e)}')
             raise Exception(f"The Default Channel of the defined Admin Team is unreachable.")
-        return response.json().get('value')[0]
+        serialized_channel = response.json().get('value')[0]
+        serialized_channel['displayName'] = None
+        return serialized_channel
 
     def get_channel_by_name(self, team_id, channel_name):
         response = requests.get(
