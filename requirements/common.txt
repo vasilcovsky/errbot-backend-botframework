@@ -1,0 +1,2 @@
+errbot==6.1.8
+email_validator
